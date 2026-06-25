@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+:root {
+  --qraving-red: #E3000F;
+}
+
+html,
+body {
+  height: 100%;
+}

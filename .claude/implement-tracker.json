@@ -1,0 +1,101 @@
+{
+  "prd": {
+    "number": 1,
+    "title": "Customer-Facing Menu Web App (V1)"
+  },
+  "issues": [
+    {
+      "number": 2,
+      "title": "[SETUP] Next.js project scaffold with catch-all dynamic routing",
+      "summary": "Bootstrapped Next.js 16 with TypeScript and Tailwind CSS in the repo root. Created a catch-all route at app/[...path]/page.tsx that handles any URL depth, with the Qraving wordmark in red (#E3000F) and a floating 'I am done' pill button.",
+      "acceptance_criteria": [
+        "npx next dev starts without errors",
+        "Navigating to /foo/bar/baz and /a/b/c/d/e both render the app (no 404)",
+        "\"Qraving\" in red visible top-left on all routes",
+        "\"I am done\" button visible bottom-centre, styled as a pill, tapping does nothing"
+      ]
+    },
+    {
+      "number": 3,
+      "title": "[DATA] TheMealDB integration and menu data layer",
+      "summary": "Created lib/menu.ts with TypeScript types (MenuItem, MenuSection, DietaryTag, AllergenInfo) and a getMenu() function that fetches up to 6 categories and 5 items each from TheMealDB, with deterministic mocking for price, dietary tags, and allergens.",
+      "acceptance_criteria": [
+        "getMenu() returns an array of sections each with an array of items",
+        "Each item has: id, name, description, imageUrl, price, dietaryTags[], allergens[]",
+        "At least 4 sections with at least 3 items each are returned in development",
+        "No API key required (TheMealDB free tier)"
+      ]
+    },
+    {
+      "number": 4,
+      "title": "[UI] Menu card component — front and back faces",
+      "summary": "Built components/MenuCard.tsx with a full-bleed photo front face (dietary badge pills, name/price overlay, Add to Cart and Allergies & More buttons) and a flippable back face (allergen warnings, dietary status rows) using CSS perspective/rotateY 3D flip animation.",
+      "acceptance_criteria": [
+        "Card renders correctly on a 390px viewport",
+        "Dietary badges only appear for applicable tags",
+        "Tapping \"Allergies & More\" flips to back face with animation",
+        "Tapping the back/close button flips back to front",
+        "Both faces look polished and match the reference design style"
+      ]
+    },
+    {
+      "number": 5,
+      "title": "[UI] Horizontal card swipe navigation within a section",
+      "summary": "Built components/CardSwiper.tsx with touch and mouse drag gesture support (50px threshold), animated card transitions (250ms slide), boundary callbacks to parent for cross-section navigation, and a goToCard() imperative ref method. Shows dot indicators for card position.",
+      "acceptance_criteria": [
+        "Swiping left/right moves between cards with animation",
+        "At section boundary swipes, the correct cross-section callback fires",
+        "Works on real mobile touch (test in Chrome DevTools touch emulation)",
+        "No scroll interference with vertical navigation"
+      ]
+    },
+    {
+      "number": 6,
+      "title": "[UI] Vertical section snap navigation",
+      "summary": "Built components/SectionNavigator.tsx managing vertical swipe gestures (60px threshold, >45° angle) to snap between sections with 300ms slide animation, wiring CardSwiper boundary callbacks for cross-section transitions, and a right-edge dot progress indicator.",
+      "acceptance_criteria": [
+        "Swiping up/down snaps cleanly between sections",
+        "Diagonal swipes are correctly classified as horizontal or vertical",
+        "Cross-section horizontal boundary transitions land on correct card (first or last)",
+        "No scroll bleed or double-triggers"
+      ]
+    },
+    {
+      "number": 7,
+      "title": "[UI] Next-section peek animation",
+      "summary": "Extended SectionNavigator with a 5-second interval peek animation: a 90px strip slides up from the bottom showing the next section's blurred thumbnail and name, recedes after 1.2s, pauses on the last section, resets on any gesture, and respects the isPeekPaused prop.",
+      "acceptance_criteria": [
+        "Peek fires automatically every 5 seconds of inactivity",
+        "Peek recedes smoothly within 1.5 seconds",
+        "No peek on the last section",
+        "Interval resets after any user gesture",
+        "Animation does not conflict with gesture navigation"
+      ]
+    },
+    {
+      "number": 8,
+      "title": "[UI] Add to Cart bottom sheet with cart name persistence",
+      "summary": "Built components/AddToCartSheet.tsx as a slide-up bottom sheet with size selector, add-on checkboxes, and special instructions field. Cart state (ownerName + items) persists in localStorage under qraving_cart, with inline name editing and drag-to-close gesture support.",
+      "acceptance_criteria": [
+        "Bottom sheet opens with correct item details",
+        "Previous owner's name shown if present in localStorage",
+        "Name is editable inline",
+        "Item is added to localStorage cart on confirm",
+        "Sheet closes cleanly on confirm, backdrop tap, or drag-down",
+        "Cart persists across page refreshes"
+      ]
+    },
+    {
+      "number": 9,
+      "title": "[UI] Wire up all components into the menu page",
+      "summary": "Created components/MenuPage.tsx (client component) orchestrating SectionNavigator, AddToCartSheet, and the 'I am done' button, fed by a server-side getMenu() call in app/[...path]/page.tsx. Updated next.config.ts to allow themealdb.com images. Build passes clean.",
+      "acceptance_criteria": [
+        "All acceptance criteria from PRD #1 pass in a single end-to-end walkthrough",
+        "No console errors in production build (next build)",
+        "Fully usable on a 390px mobile viewport with touch emulation"
+      ]
+    }
+  ],
+  "qa_changes": [],
+  "status": "implemented"
+}
