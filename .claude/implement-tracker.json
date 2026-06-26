@@ -1,98 +1,89 @@
 {
   "prd": {
-    "number": 1,
-    "title": "Customer-Facing Menu Web App (V1)"
+    "number": 10,
+    "title": "PRD: Menu Page Visual & Interaction Redesign"
   },
   "issues": [
     {
-      "number": 2,
-      "title": "[SETUP] Next.js project scaffold with catch-all dynamic routing",
-      "summary": "Bootstrapped Next.js 16 with TypeScript and Tailwind CSS in the repo root. Created a catch-all route at app/[...path]/page.tsx that handles any URL depth, with the Qraving wordmark in red (#E3000F) and a floating 'I am done' pill button.",
+      "number": 11,
+      "title": "Sticky co-branded header with Qraving + restaurant placeholder logo",
+      "summary": "Replaced the plain Qraving text header in MenuPage with a full sticky header that shows the Qraving wordmark on the left and a styled grey placeholder div on the right for the restaurant logo, with a border-b separator and z-20 so it stays above all content.",
       "acceptance_criteria": [
-        "npx next dev starts without errors",
-        "Navigating to /foo/bar/baz and /a/b/c/d/e both render the app (no 404)",
-        "\"Qraving\" in red visible top-left on all routes",
-        "\"I am done\" button visible bottom-centre, styled as a pill, tapping does nothing"
+        "A header strip is visible at the top of the menu page at all times",
+        "The Qraving logo/wordmark appears on the left of the header",
+        "A placeholder element (e.g. a grey rounded box labelled 'Restaurant Logo') appears on the right of the header",
+        "The header remains sticky/fixed as the user swipes vertically between sections",
+        "The header does not overlap or obscure the category label or card content",
+        "The placeholder is clearly marked in code with a comment so it is easy to swap later"
       ]
     },
     {
-      "number": 3,
-      "title": "[DATA] TheMealDB integration and menu data layer",
-      "summary": "Created lib/menu.ts with TypeScript types (MenuItem, MenuSection, DietaryTag, AllergenInfo) and a getMenu() function that fetches up to 6 categories and 5 items each from TheMealDB, with deterministic mocking for price, dietary tags, and allergens.",
+      "number": 12,
+      "title": "Live category name label that updates on section swipe",
+      "summary": "Added activeSectionName state to MenuPage (initialised from sections[0].name) and an onActiveSectionChange callback prop to SectionNavigator that fires inside goToSection whenever the section changes. The label is rendered in MenuPage between the header and the SectionNavigator.",
       "acceptance_criteria": [
-        "getMenu() returns an array of sections each with an array of items",
-        "Each item has: id, name, description, imageUrl, price, dietaryTags[], allergens[]",
-        "At least 4 sections with at least 3 items each are returned in development",
-        "No API key required (TheMealDB free tier)"
+        "A category name label is visible below the sticky header and above the card carousel",
+        "The label shows the name of the currently active section on first render",
+        "The label updates to the new section name whenever the user swipes to a different section",
+        "The label is not interactive (not a button or link)",
+        "The label does not cause layout shift when the text changes between sections"
       ]
     },
     {
-      "number": 4,
-      "title": "[UI] Menu card component — front and back faces",
-      "summary": "Built components/MenuCard.tsx with a full-bleed photo front face (dietary badge pills, name/price overlay, Add to Cart and Allergies & More buttons) and a flippable back face (allergen warnings, dietary status rows) using CSS perspective/rotateY 3D flip animation.",
+      "number": 13,
+      "title": "Card carousel: 70vh height, peeking adjacent cards with dimming, remove dot indicators",
+      "summary": "Rewrote CardSwiper to use a film-strip track approach: all cards in a flex row at 96vw each, with translateX(2vw - index*96vw) to center the active card; inactive cards render at 0.5 opacity. Container height is h-[70vh]. Dot indicators and section progress dots (in SectionNavigator) were removed.",
       "acceptance_criteria": [
-        "Card renders correctly on a 390px viewport",
-        "Dietary badges only appear for applicable tags",
-        "Tapping \"Allergies & More\" flips to back face with animation",
-        "Tapping the back/close button flips back to front",
-        "Both faces look polished and match the reference design style"
+        "Each card is 70% of the viewport height",
+        "The active card has 2% of the viewport width as padding on its left and right edges",
+        "The left edge of the next card is visible to the right of the active card",
+        "The right edge of the previous card is visible to the left of the active card (when not on the first card)",
+        "Peeking cards are visually dimmed compared to the active card",
+        "The active card is clearly distinguished (full opacity, centred)",
+        "Card-position dot indicators (CardSwiper) are removed",
+        "Section-progress dot indicators (SectionNavigator) are removed",
+        "Horizontal swipe navigation between cards still works correctly"
       ]
     },
     {
-      "number": 5,
-      "title": "[UI] Horizontal card swipe navigation within a section",
-      "summary": "Built components/CardSwiper.tsx with touch and mouse drag gesture support (50px threshold), animated card transitions (250ms slide), boundary callbacks to parent for cross-section navigation, and a goToCard() imperative ref method. Shows dot indicators for card position.",
+      "number": 14,
+      "title": "Card face redesign: full-bleed image with bottom blur overlay containing name, description, and action buttons",
+      "summary": "Rewrote MenuCard's front face: image now fills 100% of the card (object-cover), bottom 40% has a frosted blur overlay using backdrop-filter+gradient-mask fading from transparent to dark, and inside the overlay sits name+price, truncated description, 'Allergies & More' (semi-transparent border), and 'Add to Cart' (red). Border radius raised to rounded-3xl. Back face unchanged.",
       "acceptance_criteria": [
-        "Swiping left/right moves between cards with animation",
-        "At section boundary swipes, the correct cross-section callback fires",
-        "Works on real mobile touch (test in Chrome DevTools touch emulation)",
-        "No scroll interference with vertical navigation"
+        "The dish photo fills 100% of the card width and height (object-fit cover)",
+        "The bottom 30% of the card has a gradual blur overlay that fades in from transparent at the top",
+        "Item name is readable inside the blurred overlay area",
+        "Item description (truncated) is readable inside the blurred overlay area",
+        "'Allergies & More' button sits inside the blurred overlay and triggers the 3D card flip (unchanged behaviour)",
+        "'Add to Cart' button sits inside the blurred overlay and opens the bottom sheet (unchanged behaviour)",
+        "Card corners are more rounded than the current design (e.g. rounded-3xl or equivalent)",
+        "The card flip back face remains functionally and visually unchanged",
+        "The AddToCartSheet remains functionally unchanged"
       ]
     },
     {
-      "number": 6,
-      "title": "[UI] Vertical section snap navigation",
-      "summary": "Built components/SectionNavigator.tsx managing vertical swipe gestures (60px threshold, >45° angle) to snap between sections with 300ms slide animation, wiring CardSwiper boundary callbacks for cross-section transitions, and a right-edge dot progress indicator.",
+      "number": 15,
+      "title": "Out-of-stock card state: greyed-out overlay with disabled Add to Cart",
+      "summary": "Added isAvailable: boolean to the MenuItem interface and a deriveAvailability() helper in menu.ts that marks ~20% of items as unavailable (idMeal % 5 === 0). In MenuCard, unavailable items get a grayscale+brightness filter on the image, a light grey tint overlay, and both Add to Cart buttons (front and back face) are disabled and show 'Unavailable'.",
       "acceptance_criteria": [
-        "Swiping up/down snaps cleanly between sections",
-        "Diagonal swipes are correctly classified as horizontal or vertical",
-        "Cross-section horizontal boundary transitions land on correct card (first or last)",
-        "No scroll bleed or double-triggers"
+        "Out-of-stock items are still rendered as cards in the carousel (not hidden)",
+        "Out-of-stock cards have a visible greyed-out or desaturated overlay that communicates unavailability",
+        "The 'Add to Cart' button is disabled or hidden on out-of-stock cards",
+        "'Allergies & More' / card flip still works on out-of-stock cards (the dish details are still viewable)",
+        "In-stock cards are not affected"
       ]
     },
     {
-      "number": 7,
-      "title": "[UI] Next-section peek animation",
-      "summary": "Extended SectionNavigator with a 5-second interval peek animation: a 90px strip slides up from the bottom showing the next section's blurred thumbnail and name, recedes after 1.2s, pauses on the last section, resets on any gesture, and respects the isPeekPaused prop.",
+      "number": 16,
+      "title": "\"I am done\" placeholder button pinned at bottom of menu screen",
+      "summary": "Replaced the old floating pill button with a full-width fixed button (left-4 right-4, rounded-2xl, bottom: 5vh) in MenuPage. No click handler is wired up — it is a visual placeholder only.",
       "acceptance_criteria": [
-        "Peek fires automatically every 5 seconds of inactivity",
-        "Peek recedes smoothly within 1.5 seconds",
-        "No peek on the last section",
-        "Interval resets after any user gesture",
-        "Animation does not conflict with gesture navigation"
-      ]
-    },
-    {
-      "number": 8,
-      "title": "[UI] Add to Cart bottom sheet with cart name persistence",
-      "summary": "Built components/AddToCartSheet.tsx as a slide-up bottom sheet with size selector, add-on checkboxes, and special instructions field. Cart state (ownerName + items) persists in localStorage under qraving_cart, with inline name editing and drag-to-close gesture support.",
-      "acceptance_criteria": [
-        "Bottom sheet opens with correct item details",
-        "Previous owner's name shown if present in localStorage",
-        "Name is editable inline",
-        "Item is added to localStorage cart on confirm",
-        "Sheet closes cleanly on confirm, backdrop tap, or drag-down",
-        "Cart persists across page refreshes"
-      ]
-    },
-    {
-      "number": 9,
-      "title": "[UI] Wire up all components into the menu page",
-      "summary": "Created components/MenuPage.tsx (client component) orchestrating SectionNavigator, AddToCartSheet, and the 'I am done' button, fed by a server-side getMenu() call in app/[...path]/page.tsx. Updated next.config.ts to allow themealdb.com images. Build passes clean.",
-      "acceptance_criteria": [
-        "All acceptance criteria from PRD #1 pass in a single end-to-end walkthrough",
-        "No console errors in production build (next build)",
-        "Fully usable on a 390px mobile viewport with touch emulation"
+        "An 'I am done' button is visible at the bottom of the menu screen",
+        "The button is full-width (or close to it) and clearly styled as a primary action",
+        "The button has approximately 5% viewport height as bottom margin/padding beneath it",
+        "The button does not overlap or obscure the card carousel content",
+        "Tapping the button has no effect (no handler, no navigation) — it is a visual placeholder",
+        "The button remains in place as the user swipes between sections and cards"
       ]
     }
   ],

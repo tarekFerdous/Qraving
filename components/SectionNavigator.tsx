@@ -14,6 +14,8 @@ interface SectionNavigatorProps {
   onAddToCart: (item: MenuItem) => void;
   /** Pass true when a bottom sheet (e.g. AddToCart) is open to pause the peek. */
   isPeekPaused?: boolean;
+  /** Called whenever the active section changes, with the new section's name. */
+  onActiveSectionChange?: (name: string) => void;
 }
 
 type SwipeDirection = 'up' | 'down';
@@ -32,7 +34,12 @@ const TRANSITION_DURATION = 300;
 // Component
 // ---------------------------------------------------------------------------
 
-export default function SectionNavigator({ sections, onAddToCart, isPeekPaused = false }: SectionNavigatorProps) {
+export default function SectionNavigator({
+  sections,
+  onAddToCart,
+  isPeekPaused = false,
+  onActiveSectionChange,
+}: SectionNavigatorProps) {
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
 
   /**
@@ -95,20 +102,16 @@ export default function SectionNavigator({ sections, onAddToCart, isPeekPaused =
    * 4. After another 300ms (transition done): unmount (isPeeking = false)
    */
   const triggerPeek = useCallback(() => {
-    // Mount the strip
     setIsPeeking(true);
     setIsPeekVisible(false);
 
-    // Next frame: trigger slide-in
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         setIsPeekVisible(true);
 
-        // After 1200ms visible, slide back out
         peekTimeoutRef.current = setTimeout(() => {
           setIsPeekVisible(false);
 
-          // After the 300ms CSS transition, unmount
           peekTimeoutRef.current = setTimeout(() => {
             setIsPeeking(false);
             peekTimeoutRef.current = null;
@@ -134,7 +137,6 @@ export default function SectionNavigator({ sections, onAddToCart, isPeekPaused =
   useEffect(() => {
     const isLastSection = activeSectionIndex === sections.length - 1;
 
-    // Do not peek if paused, on the last section, or only one section exists
     if (isPeekPaused || isLastSection || sections.length <= 1) {
       if (peekIntervalRef.current !== null) {
         clearInterval(peekIntervalRef.current);
@@ -176,8 +178,8 @@ export default function SectionNavigator({ sections, onAddToCart, isPeekPaused =
       setDirection(dir);
       setAnimationKey((k) => k + 1);
       setActiveSectionIndex(nextIndex);
+      onActiveSectionChange?.(sections[nextIndex].name);
 
-      // Position the target swiper at the correct card immediately.
       const targetRef = swiperRefs.current[nextIndex];
       if (targetRef) {
         const targetSection = sections[nextIndex];
@@ -189,7 +191,7 @@ export default function SectionNavigator({ sections, onAddToCart, isPeekPaused =
         isTransitioning.current = false;
       }, TRANSITION_DURATION);
     },
-    [sections]
+    [sections, onActiveSectionChange]
   );
 
   // -------------------------------------------------------------------------
@@ -226,7 +228,6 @@ export default function SectionNavigator({ sections, onAddToCart, isPeekPaused =
     const deltaY = e.touches[0].clientY - touchStartY.current;
     const deltaX = e.touches[0].clientX - touchStartX.current;
 
-    // Prevent browser scroll only when we detect a primarily vertical gesture.
     if (Math.abs(deltaY) > Math.abs(deltaX)) {
       e.preventDefault();
     }
@@ -243,34 +244,24 @@ export default function SectionNavigator({ sections, onAddToCart, isPeekPaused =
     touchStartX.current = null;
     touchStartY.current = null;
 
-    // Require: Y delta exceeds threshold AND angle is more vertical than horizontal.
     const isVertical = Math.abs(deltaY) > Math.abs(deltaX);
     if (!isVertical || Math.abs(deltaY) < VERTICAL_SWIPE_THRESHOLD) return;
 
     if (deltaY < 0) {
-      // Swipe up → next section
       goToSection(activeSectionIndex + 1, 'up', false);
     } else {
-      // Swipe down → previous section
       goToSection(activeSectionIndex - 1, 'down', false);
     }
   }
 
   // -------------------------------------------------------------------------
-  // Animation class helpers
+  // Animation helpers
   // -------------------------------------------------------------------------
 
-  /**
-   * Returns the inline keyframe animation style for the section content.
-   * 'up'   → slides in from below (translateY 100% → 0)
-   * 'down' → slides in from above (translateY -100% → 0)
-   */
   function getAnimationStyle(): React.CSSProperties {
     const fromY = direction === 'up' ? '100%' : '-100%';
     return {
       animation: `sectionSlideIn ${TRANSITION_DURATION}ms ease-out forwards`,
-      // CSS custom property passed as data attribute alternative — we inject
-      // the keyframe via a <style> tag defined once in the component output.
       ['--from-y' as string]: fromY,
     };
   }
@@ -290,10 +281,6 @@ export default function SectionNavigator({ sections, onAddToCart, isPeekPaused =
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
-      {/*
-        Inject keyframe animation once. Uses a CSS custom property --from-y
-        so the direction is driven by the inline style above.
-      */}
       <style>{`
         @keyframes sectionSlideIn {
           from { transform: translateY(var(--from-y, 100%)); }
@@ -316,30 +303,6 @@ export default function SectionNavigator({ sections, onAddToCart, isPeekPaused =
         />
       </div>
 
-      {/* Vertical section progress indicator — right edge */}
-      {sections.length > 1 && (
-        <div
-          className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1.5 pointer-events-none z-10"
-          aria-label={`Section ${activeSectionIndex + 1} of ${sections.length}`}
-        >
-          {sections.map((_, i) => (
-            <span
-              key={i}
-              className="rounded-full transition-all duration-200"
-              style={{
-                width: i === activeSectionIndex ? 6 : 4,
-                height: i === activeSectionIndex ? 6 : 4,
-                backgroundColor:
-                  i === activeSectionIndex
-                    ? '#E3000F'
-                    : 'rgba(0, 0, 0, 0.25)',
-                flexShrink: 0,
-              }}
-            />
-          ))}
-        </div>
-      )}
-
       {/* Peek strip — next-section hint that slides up from the bottom */}
       {isPeeking && (() => {
         const nextSection = sections[activeSectionIndex + 1];
@@ -353,7 +316,6 @@ export default function SectionNavigator({ sections, onAddToCart, isPeekPaused =
               transition: 'transform 300ms ease-out',
             }}
           >
-            {/* Blurred background thumbnail */}
             {firstItem?.imageUrl && (
               <div className="absolute inset-0">
                 <Image
@@ -367,7 +329,6 @@ export default function SectionNavigator({ sections, onAddToCart, isPeekPaused =
               </div>
             )}
 
-            {/* Dark gradient overlay */}
             <div
               className="absolute inset-0"
               style={{
@@ -376,7 +337,6 @@ export default function SectionNavigator({ sections, onAddToCart, isPeekPaused =
               }}
             />
 
-            {/* Text content */}
             <div className="relative h-full flex flex-col items-center justify-center gap-0.5">
               <span
                 className="text-white/80 text-xs font-medium tracking-wide"

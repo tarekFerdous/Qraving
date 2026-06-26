@@ -34,6 +34,14 @@ const SWIPE_THRESHOLD = 50;
 /** Card slide animation duration in milliseconds. */
 const ANIMATION_DURATION = 250;
 
+/**
+ * Each card occupies 96vw of the viewport width.
+ * The active card is offset 2vw from the left edge, giving 2% breathing room
+ * on each side and causing adjacent cards to peek in at the edges.
+ */
+const CARD_WIDTH_VW = 96;
+const CARD_LEFT_PADDING_VW = 2;
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -43,14 +51,10 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
     const [currentIndex, setCurrentIndex] = useState(0);
 
     /**
-     * Animation state:
-     *  - null   → no animation running, card at translateX(0)
-     *  - 'exit-left'  → current card slides out to the left (next card incoming)
-     *  - 'exit-right' → current card slides out to the right (prev card incoming)
+     * When true, the track's CSS transition is active so the card slides
+     * smoothly to the new position. Set to false for instant (programmatic) jumps.
      */
-    const [animationPhase, setAnimationPhase] = useState<
-      'exit-left' | 'exit-right' | null
-    >(null);
+    const [isTransitioning, setIsTransitioning] = useState(false);
 
     /** Prevent overlapping swipe gestures while animating. */
     const isAnimating = useRef(false);
@@ -64,18 +68,26 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
     const isDragging = useRef(false);
 
     // -----------------------------------------------------------------------
+    // Track position
+    // translateX(Xvw) where X = CARD_LEFT_PADDING_VW - currentIndex * CARD_WIDTH_VW
+    // This places the active card's left edge at CARD_LEFT_PADDING_VW from the container.
+    // -----------------------------------------------------------------------
+
+    const trackTranslateX = `${CARD_LEFT_PADDING_VW - currentIndex * CARD_WIDTH_VW}vw`;
+
+    // -----------------------------------------------------------------------
     // Navigation helpers
     // -----------------------------------------------------------------------
 
-    function navigateTo(nextIndex: number, direction: 'exit-left' | 'exit-right') {
+    function navigateTo(nextIndex: number) {
       if (isAnimating.current) return;
       isAnimating.current = true;
 
-      setAnimationPhase(direction);
+      setIsTransitioning(true);
+      setCurrentIndex(nextIndex);
 
       setTimeout(() => {
-        setCurrentIndex(nextIndex);
-        setAnimationPhase(null);
+        setIsTransitioning(false);
         isAnimating.current = false;
       }, ANIMATION_DURATION);
     }
@@ -84,9 +96,8 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
       if (isAnimating.current) return;
 
       if (currentIndex < items.length - 1) {
-        navigateTo(currentIndex + 1, 'exit-left');
+        navigateTo(currentIndex + 1);
       } else {
-        // Last card — advance to the next section.
         onNextSection();
       }
     }
@@ -95,9 +106,8 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
       if (isAnimating.current) return;
 
       if (currentIndex > 0) {
-        navigateTo(currentIndex - 1, 'exit-right');
+        navigateTo(currentIndex - 1);
       } else {
-        // First card — go back to the previous section (at its last card).
         onPrevSection({ goToLast: true });
       }
     }
@@ -109,8 +119,9 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
     useImperativeHandle(ref, () => ({
       goToCard(index: number) {
         const clamped = Math.max(0, Math.min(index, items.length - 1));
+        // Instant jump — no animation
+        setIsTransitioning(false);
         setCurrentIndex(clamped);
-        setAnimationPhase(null);
         isAnimating.current = false;
       },
     }));
@@ -147,7 +158,6 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
     }
 
     function onMouseMove(e: React.MouseEvent<HTMLDivElement>) {
-      // Prevent text selection while dragging.
       if (isDragging.current) {
         e.preventDefault();
       }
@@ -169,26 +179,9 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
     }
 
     function onMouseLeave() {
-      // Cancel drag if pointer leaves the container without releasing.
       mouseStartX.current = null;
       isDragging.current = false;
     }
-
-    // -----------------------------------------------------------------------
-    // Derived transform for the sliding animation
-    // -----------------------------------------------------------------------
-
-    let cardTransform = 'translateX(0)';
-    if (animationPhase === 'exit-left') {
-      cardTransform = 'translateX(-100%)';
-    } else if (animationPhase === 'exit-right') {
-      cardTransform = 'translateX(100%)';
-    }
-
-    const cardTransition =
-      animationPhase !== null
-        ? `transform ${ANIMATION_DURATION}ms ease-out`
-        : 'none';
 
     // -----------------------------------------------------------------------
     // Render
@@ -198,7 +191,7 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
 
     return (
       <div
-        className="w-full h-full overflow-hidden relative select-none"
+        className="w-full h-[70vh] overflow-hidden relative select-none"
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
         onMouseDown={onMouseDown}
@@ -206,43 +199,34 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseLeave}
       >
-        {/* Card area — slides on swipe */}
+        {/*
+          Card track — all cards sit side-by-side in a flex row.
+          Translating the track centers the active card with 2vw left breathing room.
+          Adjacent cards peek in at the left and right edges at 50% opacity.
+        */}
         <div
-          className="absolute inset-0"
+          className="flex h-full"
           style={{
-            transform: cardTransform,
-            transition: cardTransition,
+            transform: `translateX(${trackTranslateX})`,
+            transition: isTransitioning
+              ? `transform ${ANIMATION_DURATION}ms ease-out`
+              : 'none',
+            willChange: 'transform',
           }}
         >
-          <MenuCard
-            item={items[currentIndex]}
-            onAddToCart={onAddToCart}
-          />
+          {items.map((item, i) => (
+            <div
+              key={item.id}
+              className="h-full shrink-0 transition-opacity duration-200"
+              style={{
+                width: `${CARD_WIDTH_VW}vw`,
+                opacity: i === currentIndex ? 1 : 0.5,
+              }}
+            >
+              <MenuCard item={item} onAddToCart={onAddToCart} />
+            </div>
+          ))}
         </div>
-
-        {/* Dot indicator */}
-        {items.length > 1 && (
-          <div
-            className="absolute bottom-3 left-0 right-0 flex justify-center items-center gap-1.5 pointer-events-none"
-            aria-label={`Card ${currentIndex + 1} of ${items.length}`}
-          >
-            {items.map((_, i) => (
-              <span
-                key={i}
-                className="rounded-full transition-all duration-200"
-                style={{
-                  width: i === currentIndex ? 8 : 6,
-                  height: i === currentIndex ? 8 : 6,
-                  backgroundColor:
-                    i === currentIndex
-                      ? '#E3000F'
-                      : 'rgba(0, 0, 0, 0.25)',
-                  flexShrink: 0,
-                }}
-              />
-            ))}
-          </div>
-        )}
       </div>
     );
   }

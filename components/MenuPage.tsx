@@ -11,15 +11,32 @@ interface MenuPageProps {
 
 export default function MenuPage({ sections }: MenuPageProps) {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [activeSectionName, setActiveSectionName] = useState<string>(
+    sections[0]?.name ?? ''
+  );
 
   return (
-    <div className="flex flex-col h-screen">
-      {/* Header */}
-      <header className="h-14 flex items-center px-4 shrink-0">
+    <div className="flex flex-col h-screen bg-white">
+      {/* Co-branded sticky header */}
+      <header className="sticky top-0 z-20 h-14 flex items-center justify-between px-4 bg-white border-b border-gray-100 shrink-0">
         <span className="font-bold text-xl" style={{ color: '#E3000F' }}>
           Qraving
         </span>
+        {/* Restaurant logo placeholder — swap this element for a real <img> when asset is available */}
+        <div
+          className="w-10 h-10 rounded-xl bg-gray-200 flex items-center justify-center overflow-hidden"
+          aria-label="Restaurant logo placeholder"
+        >
+          <span className="text-gray-400 text-[9px] font-medium text-center leading-tight px-1">
+            Logo
+          </span>
+        </div>
       </header>
+
+      {/* Live category name label */}
+      <div className="px-4 pt-3 pb-2 bg-white shrink-0">
+        <p className="text-gray-800 font-semibold text-base">{activeSectionName}</p>
+      </div>
 
       {/* Body — fills remaining height */}
       <div className="flex-1 overflow-hidden">
@@ -27,6 +44,7 @@ export default function MenuPage({ sections }: MenuPageProps) {
           sections={sections}
           onAddToCart={setSelectedItem}
           isPeekPaused={!!selectedItem}
+          onActiveSectionChange={setActiveSectionName}
         />
       </div>
 
@@ -36,11 +54,11 @@ export default function MenuPage({ sections }: MenuPageProps) {
         onClose={() => setSelectedItem(null)}
       />
 
-      {/* "I am done" floating pill */}
+      {/* "I am done" button — full-width, pinned at bottom with 5vh breathing room */}
       <button
         type="button"
-        className="fixed bottom-20 left-1/2 -translate-x-1/2 px-8 py-3 rounded-full text-white font-semibold text-sm shadow-lg"
-        style={{ backgroundColor: '#E3000F' }}
+        className="fixed left-4 right-4 py-4 rounded-2xl text-white font-semibold text-base shadow-lg z-10"
+        style={{ backgroundColor: '#E3000F', bottom: '5vh' }}
         aria-label="I am done"
       >
         I am done

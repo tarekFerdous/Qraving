@@ -37,18 +37,16 @@ const DIETARY_TAG_LABELS: Record<DietaryTag, string> = {
   NutFree: 'Nut-Free',
 };
 
-/** Badge background colors used on the front photo */
 const BADGE_BG: Record<DietaryTag, string> = {
-  Vegan: '#16a34a',       // green-600
-  Vegetarian: '#15803d',  // green-700
-  Halal: '#0d9488',       // teal-600
-  Kosher: '#7c3aed',      // violet-600
-  GlutenFree: '#ca8a04',  // yellow-600
-  LactoseFree: '#2563eb', // blue-600
-  NutFree: '#ea580c',     // orange-600
+  Vegan: '#16a34a',
+  Vegetarian: '#15803d',
+  Halal: '#0d9488',
+  Kosher: '#7c3aed',
+  GlutenFree: '#ca8a04',
+  LactoseFree: '#2563eb',
+  NutFree: '#ea580c',
 };
 
-/** Row indicator colors used on the back face */
 const TAG_COLOR: Record<DietaryTag, string> = {
   Vegan: '#16a34a',
   Vegetarian: '#15803d',
@@ -70,14 +68,13 @@ export default function MenuCard({ item, onAddToCart }: MenuCardProps) {
   const tagSet = new Set<DietaryTag>(item.dietaryTags);
 
   return (
-    /* Perspective wrapper — gives depth to the 3D flip */
     <div
-      className="h-full w-full"
+      className="h-full w-full px-0"
       style={{ perspective: '1000px' }}
     >
       {/* Card container — rotates on Y axis */}
       <div
-        className="relative h-full w-full rounded-2xl shadow-md"
+        className="relative h-full w-full rounded-3xl shadow-xl"
         style={{
           transformStyle: 'preserve-3d',
           transition: 'transform 450ms cubic-bezier(0.4, 0, 0.2, 1)',
@@ -85,125 +82,145 @@ export default function MenuCard({ item, onAddToCart }: MenuCardProps) {
         }}
       >
         {/* ================================================================
-            FRONT FACE
+            FRONT FACE — full-bleed image with bottom blur overlay
         ================================================================ */}
         <div
-          className="absolute inset-0 flex flex-col rounded-2xl overflow-hidden bg-white"
+          className="absolute inset-0 rounded-3xl overflow-hidden"
           style={{ backfaceVisibility: 'hidden' }}
         >
-          {/* Photo — top ~60% */}
-          <div className="relative" style={{ flex: '0 0 60%' }}>
-            <Image
-              src={item.imageUrl}
-              alt={item.name}
-              fill
-              className="object-cover"
-              sizes="390px"
-              priority={false}
+          {/* Full-bleed photo */}
+          <Image
+            src={item.imageUrl}
+            alt={item.name}
+            fill
+            className="object-cover"
+            sizes="96vw"
+            priority={false}
+            style={
+              !item.isAvailable
+                ? { filter: 'grayscale(0.7) brightness(0.75)' }
+                : undefined
+            }
+          />
+
+          {/* Out-of-stock desaturation tint */}
+          {!item.isAvailable && (
+            <div
+              className="absolute inset-0 z-10"
+              style={{ backgroundColor: 'rgba(200,200,200,0.3)' }}
+            />
+          )}
+
+          {/* Dietary badge pills — top-right */}
+          {item.dietaryTags.length > 0 && (
+            <div className="absolute top-3 right-3 flex flex-col items-end gap-1 z-20">
+              {item.dietaryTags.map((tag) => (
+                <span
+                  key={tag}
+                  className="text-white text-[10px] font-semibold px-2 py-0.5 rounded-full leading-tight"
+                  style={{ backgroundColor: BADGE_BG[tag] }}
+                >
+                  {DIETARY_TAG_LABELS[tag]}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Bottom blur overlay — covers the bottom ~40% of the card */}
+          <div
+            className="absolute inset-x-0 bottom-0 z-20"
+            style={{ height: '40%' }}
+          >
+            {/* Blur + gradient layer — fades from transparent at top to frosted at bottom */}
+            <div
+              className="absolute inset-0"
+              style={{
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+                maskImage:
+                  'linear-gradient(to bottom, transparent 0%, black 45%)',
+                WebkitMaskImage:
+                  'linear-gradient(to bottom, transparent 0%, black 45%)',
+                background:
+                  'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.75) 100%)',
+              }}
             />
 
-            {/* Gradient overlay with name + price */}
-            <div
-              className="absolute inset-x-0 bottom-0 px-3 pb-3 pt-8"
-              style={{
-                background:
-                  'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0) 100%)',
-              }}
-            >
+            {/* Content — name, description, action buttons */}
+            <div className="relative h-full flex flex-col justify-end px-3 pb-3 gap-1.5">
+              {/* Name + price */}
               <div className="flex items-end justify-between gap-2">
-                <p className="text-white font-bold text-base leading-tight">
+                <p className="text-white font-bold text-base leading-tight line-clamp-1 flex-1">
                   {item.name}
                 </p>
                 <p
                   className="text-white font-bold text-base shrink-0"
-                  style={{ textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}
+                  style={{ textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}
                 >
                   £{item.price.toFixed(2)}
                 </p>
               </div>
-            </div>
 
-            {/* Dietary badge pills — top-right of photo */}
-            {item.dietaryTags.length > 0 && (
-              <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
-                {item.dietaryTags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="text-white text-[10px] font-semibold px-2 py-0.5 rounded-full leading-tight"
-                    style={{ backgroundColor: BADGE_BG[tag] }}
-                  >
-                    {DIETARY_TAG_LABELS[tag]}
-                  </span>
-                ))}
+              {/* Description */}
+              <p className="text-white/75 text-xs leading-snug line-clamp-2">
+                {item.description}
+              </p>
+
+              {/* Action buttons */}
+              <div className="flex flex-col gap-1.5 mt-0.5">
+                {/* Allergies & More — triggers 3D flip */}
+                <button
+                  type="button"
+                  onClick={() => setFlipped(true)}
+                  className="w-full py-2 rounded-xl text-white text-sm font-semibold"
+                  style={{
+                    border: '1px solid rgba(255,255,255,0.45)',
+                    backgroundColor: 'rgba(255,255,255,0.1)',
+                  }}
+                >
+                  Allergies &amp; More
+                </button>
+
+                {/* Add to Cart — disabled for out-of-stock items */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (item.isAvailable) onAddToCart(item);
+                  }}
+                  disabled={!item.isAvailable}
+                  className="w-full py-2 rounded-xl text-white text-sm font-semibold transition-opacity active:opacity-80"
+                  style={{
+                    backgroundColor: item.isAvailable
+                      ? '#E3000F'
+                      : 'rgba(100,100,100,0.65)',
+                    cursor: item.isAvailable ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  {item.isAvailable ? 'Add to Cart' : 'Unavailable'}
+                </button>
               </div>
-            )}
-          </div>
-
-          {/* Content area — bottom ~40% */}
-          <div className="flex flex-col flex-1 px-4 pt-3 pb-4 gap-3 overflow-hidden">
-            {/* Short description */}
-            <p className="text-gray-600 text-sm leading-snug line-clamp-3 flex-1">
-              {item.description}
-            </p>
-
-            {/* Action buttons */}
-            <div className="flex flex-col gap-2 mt-auto">
-              {/* Allergies & More — secondary outlined */}
-              <button
-                type="button"
-                onClick={() => setFlipped(true)}
-                className="w-full py-2.5 rounded-xl border text-sm font-semibold transition-colors"
-                style={{
-                  borderColor: '#E3000F',
-                  color: '#E3000F',
-                  backgroundColor: 'transparent',
-                }}
-                onMouseOver={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.backgroundColor =
-                    'rgba(227,0,15,0.06)';
-                }}
-                onMouseOut={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.backgroundColor =
-                    'transparent';
-                }}
-              >
-                Allergies &amp; More
-              </button>
-
-              {/* Add to Cart — primary solid */}
-              <button
-                type="button"
-                onClick={() => onAddToCart(item)}
-                className="w-full py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity active:opacity-80"
-                style={{ backgroundColor: '#E3000F' }}
-              >
-                Add to Cart
-              </button>
             </div>
           </div>
         </div>
 
         {/* ================================================================
-            BACK FACE
+            BACK FACE — dietary & allergen details (visually unchanged)
         ================================================================ */}
         <div
-          className="absolute inset-0 flex flex-col rounded-2xl overflow-hidden bg-white"
+          className="absolute inset-0 flex flex-col rounded-3xl overflow-hidden bg-white"
           style={{
             backfaceVisibility: 'hidden',
             transform: 'rotateY(180deg)',
           }}
         >
           {/* Back header */}
-          <div
-            className="flex items-center gap-3 px-4 py-3 border-b border-gray-100"
-          >
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
             <button
               type="button"
               onClick={() => setFlipped(false)}
               aria-label="Back to item"
               className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors shrink-0"
             >
-              {/* Left chevron */}
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="16"
@@ -242,7 +259,6 @@ export default function MenuCard({ item, onAddToCart }: MenuCardProps) {
               </h3>
               {hasAllergens ? (
                 <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
-                  {/* Warning icon */}
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     className="shrink-0 mt-0.5"
@@ -314,18 +330,25 @@ export default function MenuCard({ item, onAddToCart }: MenuCardProps) {
             </section>
           </div>
 
-          {/* Sticky Add to Cart on back face */}
+          {/* Sticky Add to Cart on back face — disabled for out-of-stock items */}
           <div className="px-4 pb-4 pt-2 border-t border-gray-100">
             <button
               type="button"
               onClick={() => {
-                onAddToCart(item);
-                setFlipped(false);
+                if (item.isAvailable) {
+                  onAddToCart(item);
+                  setFlipped(false);
+                }
               }}
-              className="w-full py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity active:opacity-80"
-              style={{ backgroundColor: '#E3000F' }}
+              disabled={!item.isAvailable}
+              className="w-full py-2.5 rounded-xl text-white text-sm font-semibold"
+              style={{
+                backgroundColor: item.isAvailable ? '#E3000F' : '#9ca3af',
+                opacity: item.isAvailable ? 1 : 0.7,
+                cursor: item.isAvailable ? 'pointer' : 'not-allowed',
+              }}
             >
-              Add to Cart
+              {item.isAvailable ? 'Add to Cart' : 'Unavailable'}
             </button>
           </div>
         </div>

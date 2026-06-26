@@ -29,6 +29,8 @@ export interface MenuItem {
   price: number;
   dietaryTags: DietaryTag[];
   allergens: AllergenInfo[];
+  /** Deterministically derived — ~20% of items are marked out of stock */
+  isAvailable: boolean;
 }
 
 export interface MenuSection {
@@ -125,6 +127,11 @@ function deriveDietaryTags(idMeal: string): DietaryTag[] {
   return tags;
 }
 
+/** ~20% of items are out of stock: those where idMeal mod 5 equals 0. */
+function deriveAvailability(idMeal: string): boolean {
+  return parseInt(idMeal, 10) % 5 !== 0;
+}
+
 /**
  * Deterministically assigns 0–2 allergens based on idMeal.
  * Uses `parseInt(idMeal) % 5` to select offset into ALL_ALLERGENS.
@@ -196,6 +203,7 @@ function mapDetailToMenuItem(detail: MealDBDetail): MenuItem {
     price: derivePrice(idMeal),
     dietaryTags: deriveDietaryTags(idMeal),
     allergens: deriveAllergens(idMeal),
+    isAvailable: deriveAvailability(idMeal),
   };
 }
 
