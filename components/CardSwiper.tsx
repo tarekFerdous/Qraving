@@ -69,10 +69,10 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
     useEffect(() => {
       const el = containerRef.current;
       if (!el) return;
-      const update = () =>
-        setCardWidthPx(el.getBoundingClientRect().width * CARD_WIDTH_RATIO);
-      update();
-      const ro = new ResizeObserver(update);
+      const ro = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (entry) setCardWidthPx(entry.contentRect.width * CARD_WIDTH_RATIO);
+      });
       ro.observe(el);
       return () => ro.disconnect();
     }, []);
@@ -211,7 +211,7 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
     return (
       <div
         ref={containerRef}
-        className="w-full h-[60vh] overflow-hidden relative select-none"
+        className="w-full h-[60vh] overflow-visible relative select-none px-[6px]"
         style={{ touchAction: 'pan-y' }}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}

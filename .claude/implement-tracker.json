@@ -1,6 +1,98 @@
 {
-  "prd": null,
-  "issues": [],
+  "prd": {
+    "number": 31,
+    "title": "UI Enhancement: Poppins font, colour tokens, shadow fix, card buttons, scroll snap & done button"
+  },
+  "issues": [
+    {
+      "number": 32,
+      "title": "feat: create Tailwind v4 colour token file with brand design tokens",
+      "summary": "Created app/theme.css with an @theme block defining five brand colour tokens (qraving-bg, qraving-card-border, qraving-button, qraving-text, qraving-red). Updated app/globals.css to import theme.css at the top and removed the now-superseded --qraving-red CSS custom property.",
+      "acceptance_criteria": [
+        "app/theme.css exists and contains an @theme block with all five named colour tokens",
+        "app/globals.css imports app/theme.css at the top (before any other rules)",
+        "The existing --qraving-red CSS custom property in globals.css is removed (superseded by the token)",
+        "Running the dev server produces no Tailwind compilation errors",
+        "bg-qraving-bg, text-qraving-text, bg-qraving-button, border-qraving-card-border, and bg-qraving-red are valid Tailwind utility classes"
+      ]
+    },
+    {
+      "number": 33,
+      "title": "feat: load Poppins (all weights + italics) via next/font/google as site-wide default typeface",
+      "summary": "Updated app/layout.tsx to import Poppins from next/font/google with all 9 weights (100–900) and both normal and italic styles. The font className is applied to the <html> element, making Poppins the global default typeface.",
+      "acceptance_criteria": [
+        "app/layout.tsx imports Poppins from next/font/google with weights [100,200,300,400,500,600,700,800,900] and subsets: ['latin'], style: ['normal','italic']",
+        "The font's className is applied to the <html> element in the root layout",
+        "No other component files load or reference Poppins separately",
+        "In the browser, body text and headings render in Poppins",
+        "No Flash of Unstyled Text on page load"
+      ]
+    },
+    {
+      "number": 34,
+      "title": "refactor: replace hardcoded hex colours in components with Tailwind brand tokens",
+      "summary": "Replaced all hardcoded brand hex colour values in MenuCard.tsx, MenuPage.tsx, and AddToCartSheet.tsx with Tailwind token utility classes (bg-qraving-red, text-qraving-red, bg-qraving-button, etc.). The I am done button colour changed from red (#E3000F) to the new button token (#90CD1D) as documented in the PRD.",
+      "acceptance_criteria": [
+        "No bare hex colour strings remain in MenuCard.tsx, MenuPage.tsx, or AddToCartSheet.tsx for the five brand colours",
+        "All buttons, backgrounds, borders, and text that previously used hardcoded hex values now use Tailwind token utility classes",
+        "The dietary tag badge colours in MenuCard.tsx (green, teal, purple, yellow, blue, orange) are left as-is",
+        "The app renders visually with correct brand colours",
+        "Dev server compiles without errors or warnings"
+      ]
+    },
+    {
+      "number": 35,
+      "title": "fix: remove shadow clipping artefact from horizontal card carousel track",
+      "summary": "Changed the CardSwiper outer container from overflow-hidden to overflow-visible and added px-[6px] padding (matching half the card gap). Updated the ResizeObserver to use entry.contentRect.width so card width is calculated from the content area, excluding the new padding.",
+      "acceptance_criteria": [
+        "Card box-shadows are fully visible at both the left and right edges of the carousel — no sharp cutoff at the container boundary",
+        "The peek effect (adjacent cards partially visible) is unaffected",
+        "No content bleeds outside the carousel visual area",
+        "Horizontal swipe / drag interaction continues to work correctly",
+        "Fix is verified visually in a mobile-width browser viewport (≤ 640 px)"
+      ]
+    },
+    {
+      "number": 36,
+      "title": "feat: side-by-side card buttons with Lucide Plus icon and Add label",
+      "summary": "Restructured the front-face action buttons in MenuCard.tsx from flex-col to flex-row, giving each button flex-1. Renamed 'Add to Cart' to 'Add' and added a Lucide Plus icon. Installed lucide-react package. The back-face sticky 'Add to Cart' button is unchanged in label but updated to use bg-qraving-button token.",
+      "acceptance_criteria": [
+        "The 'Allergies & More' and 'Add' buttons appear side by side (horizontal flex row) on the front face of every card",
+        "Each button occupies equal horizontal space (flex-1)",
+        "The add-to-cart button displays a Lucide Plus icon alongside the text 'Add'",
+        "Tapping 'Add' on an available item still triggers the add-to-cart flow",
+        "Tapping 'Add' on an unavailable item remains disabled with appropriate visual disabled state",
+        "Tapping 'Allergies & More' still triggers the 3D card flip to the back face",
+        "The back-face 'Add to Cart' button is visually and behaviourally unchanged"
+      ]
+    },
+    {
+      "number": 37,
+      "title": "feat: replace gesture-driven section navigation with CSS Scroll Snap",
+      "summary": "Completely rewrote SectionNavigator.tsx replacing the bespoke touch-gesture system with a native CSS Scroll Snap container. All sections are rendered simultaneously in a scrollable container with scroll-snap-type: y mandatory; each section wrapper uses scroll-snap-align: start at 100% height. Active section detection uses IntersectionObserver with root set to the scroll container. The scrollToSection helper uses scrollIntoView({ behavior: 'instant' }) for programmatic navigation from CardSwiper boundary callbacks.",
+      "acceptance_criteria": [
+        "Scrolling down (finger swipe or mouse wheel) on the menu page snaps to the top of the next category section",
+        "Scrolling up snaps back to the top of the previous category section",
+        "Partial scroll positions are not possible — the view always settles at a section boundary",
+        "All category sections are rendered in the DOM simultaneously",
+        "The horizontal card swiper within each section continues to work (left/right swipe still navigates cards)",
+        "No bespoke touch-delta calculation code remains in SectionNavigator",
+        "Verified on a mobile-width viewport (≤ 640 px) with touch simulation"
+      ]
+    },
+    {
+      "number": 38,
+      "title": "fix: move I am done button flush to viewport bottom (bottom: 0)",
+      "summary": "Changed the I am done button's bottom offset in MenuPage.tsx from bottom: '5vh' to bottom: 0, placing it flush with the viewport bottom edge on mobile.",
+      "acceptance_criteria": [
+        "The 'I am done' button is positioned at bottom: 0 — flush with the bottom edge of the viewport on mobile",
+        "No gap or dead space is visible below the button",
+        "The button remains position: fixed on mobile and position: absolute on desktop (lg breakpoint)",
+        "The button width, padding, border radius, colour, label, and z-index are unchanged",
+        "The button continues to be tappable and does not overlap critical interactive content"
+      ]
+    }
+  ],
   "qa_changes": [],
-  "status": "idle"
+  "status": "implemented"
 }

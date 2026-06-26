@@ -255,8 +255,7 @@ export default function AddToCartSheet({ item, onClose }: AddToCartSheetProps) {
               <button
                 type="button"
                 onClick={confirmName}
-                className="text-xs font-semibold text-white px-2.5 py-1 rounded-lg"
-                style={{ backgroundColor: '#E3000F' }}
+                className="text-xs font-semibold text-white px-2.5 py-1 rounded-lg bg-qraving-red"
               >
                 OK
               </button>
@@ -265,8 +264,7 @@ export default function AddToCartSheet({ item, onClose }: AddToCartSheetProps) {
             <button
               type="button"
               onClick={startEditingName}
-              className="text-sm font-semibold text-left"
-              style={{ color: '#E3000F' }}
+              className="text-sm font-semibold text-left text-qraving-red"
             >
               {ownerName ? `${ownerName}'s cart` : 'Add your name…'}
             </button>
@@ -288,7 +286,7 @@ export default function AddToCartSheet({ item, onClose }: AddToCartSheetProps) {
             <p className="font-bold text-gray-900 text-base leading-tight truncate">
               {item.name}
             </p>
-            <p className="text-sm font-semibold mt-0.5" style={{ color: '#E3000F' }}>
+            <p className="text-sm font-semibold mt-0.5 text-qraving-red">
               £{item.price.toFixed(2)}
             </p>
           </div>
@@ -309,12 +307,11 @@ export default function AddToCartSheet({ item, onClose }: AddToCartSheetProps) {
                     key={size}
                     type="button"
                     onClick={() => setSelectedSize(size)}
-                    className="flex-1 py-2 rounded-full text-sm font-semibold border transition-colors"
-                    style={{
-                      backgroundColor: active ? '#E3000F' : 'transparent',
-                      borderColor: active ? '#E3000F' : '#d1d5db',
-                      color: active ? '#ffffff' : '#374151',
-                    }}
+                    className={`flex-1 py-2 rounded-full text-sm font-semibold border transition-colors ${
+                      active
+                        ? 'bg-qraving-red border-qraving-red text-white'
+                        : 'bg-transparent border-gray-300 text-gray-700'
+                    }`}
                   >
                     {size}
                   </button>
@@ -339,8 +336,7 @@ export default function AddToCartSheet({ item, onClose }: AddToCartSheetProps) {
                         type="checkbox"
                         checked={checked}
                         onChange={() => toggleAddOn(addOn)}
-                        className="w-4 h-4 rounded accent-red-600 cursor-pointer"
-                        style={{ accentColor: '#E3000F' }}
+                        className="w-4 h-4 rounded accent-qraving-red cursor-pointer"
                       />
                     </label>
                   </li>
@@ -368,8 +364,7 @@ export default function AddToCartSheet({ item, onClose }: AddToCartSheetProps) {
           <button
             type="button"
             onClick={handleAdd}
-            className="w-full py-3 rounded-xl text-white text-base font-bold transition-opacity active:opacity-80"
-            style={{ backgroundColor: '#E3000F' }}
+            className="w-full py-3 rounded-xl text-white text-base font-bold transition-opacity active:opacity-80 bg-qraving-red"
           >
             Add to Cart
           </button>

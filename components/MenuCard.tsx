@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
+import { Plus } from 'lucide-react';
 import { MenuItem, DietaryTag } from '@/lib/menu';
 
 // ---------------------------------------------------------------------------
@@ -74,7 +75,7 @@ export default function MenuCard({ item, onAddToCart }: MenuCardProps) {
     >
       {/* Card container — rotates on Y axis */}
       <div
-        className="relative h-full w-full rounded-3xl shadow-xl"
+        className="relative h-full w-full rounded-3xl shadow-xl border border-qraving-card-border"
         style={{
           transformStyle: 'preserve-3d',
           transition: 'transform 450ms cubic-bezier(0.4, 0, 0.2, 1)',
@@ -173,12 +174,12 @@ export default function MenuCard({ item, onAddToCart }: MenuCardProps) {
               </p>
 
               {/* Action buttons */}
-              <div className="flex flex-col gap-1.5 mt-0.5">
+              <div className="flex flex-row gap-1.5 mt-0.5">
                 {/* Allergies & More — triggers 3D flip */}
                 <button
                   type="button"
                   onClick={() => setFlipped(true)}
-                  className="w-full py-2 rounded-xl text-white text-sm font-semibold"
+                  className="flex-1 py-2 rounded-xl text-white text-sm font-semibold"
                   style={{
                     border: '1px solid rgba(255,255,255,0.45)',
                     backgroundColor: 'rgba(255,255,255,0.1)',
@@ -187,22 +188,24 @@ export default function MenuCard({ item, onAddToCart }: MenuCardProps) {
                   Allergies &amp; More
                 </button>
 
-                {/* Add to Cart — disabled for out-of-stock items */}
+                {/* Add — disabled for out-of-stock items */}
                 <button
                   type="button"
                   onClick={() => {
                     if (item.isAvailable) onAddToCart(item);
                   }}
                   disabled={!item.isAvailable}
-                  className="w-full py-2 rounded-xl text-white text-sm font-semibold transition-opacity active:opacity-80"
-                  style={{
-                    backgroundColor: item.isAvailable
-                      ? '#E3000F'
-                      : 'rgba(100,100,100,0.65)',
-                    cursor: item.isAvailable ? 'pointer' : 'not-allowed',
-                  }}
+                  className={`flex-1 py-2 rounded-xl text-white text-sm font-semibold transition-opacity active:opacity-80 flex items-center justify-center gap-1 ${
+                    item.isAvailable ? 'bg-qraving-button' : 'cursor-not-allowed'
+                  }`}
+                  style={
+                    item.isAvailable
+                      ? undefined
+                      : { backgroundColor: 'rgba(100,100,100,0.65)' }
+                  }
                 >
-                  {item.isAvailable ? 'Add to Cart' : 'Unavailable'}
+                  <Plus size={14} strokeWidth={2.5} />
+                  Add
                 </button>
               </div>
             </div>
@@ -347,12 +350,11 @@ export default function MenuCard({ item, onAddToCart }: MenuCardProps) {
                 }
               }}
               disabled={!item.isAvailable}
-              className="w-full py-2.5 rounded-xl text-white text-sm font-semibold"
-              style={{
-                backgroundColor: item.isAvailable ? '#E3000F' : '#9ca3af',
-                opacity: item.isAvailable ? 1 : 0.7,
-                cursor: item.isAvailable ? 'pointer' : 'not-allowed',
-              }}
+              className={`w-full py-2.5 rounded-xl text-white text-sm font-semibold ${
+                item.isAvailable
+                  ? 'bg-qraving-button opacity-100'
+                  : 'bg-gray-400 opacity-70 cursor-not-allowed'
+              }`}
             >
               {item.isAvailable ? 'Add to Cart' : 'Unavailable'}
             </button>

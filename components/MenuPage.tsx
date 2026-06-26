@@ -18,11 +18,11 @@ export default function MenuPage({ sections }: MenuPageProps) {
   const [logoError, setLogoError] = useState(false);
 
   return (
-    <div className="flex flex-col h-screen lg:h-full bg-white">
+    <div className="flex flex-col h-dvh lg:h-full overflow-hidden bg-qraving-bg">
       {/* Co-branded sticky header */}
-      <header className="sticky top-0 z-20 h-14 flex items-center px-4 bg-white border-b border-gray-100 shrink-0">
+      <header className="sticky top-0 z-20 h-14 flex items-center px-4 bg-qraving-card-border shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="font-bold text-xl shrink-0" style={{ color: '#E3000F' }}>
+          <span className="font-bold text-xl shrink-0 text-qraving-red">
             Qraving
           </span>
           <span className="text-gray-400 font-medium shrink-0">-</span>
@@ -45,7 +45,7 @@ export default function MenuPage({ sections }: MenuPageProps) {
       </header>
 
       {/* Live category name label */}
-      <div className="px-4 pt-3 pb-2 bg-white shrink-0">
+      <div className="px-4 pt-3 pb-2 bg-qraving-bg shrink-0">
         <p className="text-gray-800 font-semibold text-base">{activeSectionName}</p>
       </div>
 
@@ -64,15 +64,6 @@ export default function MenuPage({ sections }: MenuPageProps) {
         onClose={() => setSelectedItem(null)}
       />
 
-      {/* "I am done" button — full-width, pinned at 5vh from viewport bottom */}
-      <button
-        type="button"
-        className="fixed lg:absolute left-4 right-4 py-4 rounded-2xl text-white font-semibold text-base shadow-lg z-30"
-        style={{ backgroundColor: '#E3000F', bottom: '5vh' }}
-        aria-label="I am done"
-      >
-        I am done
-      </button>
     </div>
   );
 }
