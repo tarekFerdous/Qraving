@@ -206,7 +206,7 @@ export default function AddToCartSheet({ item, onClose }: AddToCartSheetProps) {
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-40 bg-black/50"
+        className="fixed lg:absolute inset-0 z-40 bg-black/50"
         style={{
           opacity: visible ? 1 : 0,
           transition: 'opacity 300ms ease',
@@ -220,7 +220,7 @@ export default function AddToCartSheet({ item, onClose }: AddToCartSheetProps) {
         role="dialog"
         aria-modal="true"
         aria-label={`Customise ${item.name}`}
-        className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl overflow-y-auto"
+        className="fixed lg:absolute bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl overflow-y-auto"
         style={{
           maxHeight: '85vh',
           transform: visible ? 'translateY(0)' : 'translateY(100%)',

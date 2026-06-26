@@ -94,7 +94,7 @@ export default function MenuCard({ item, onAddToCart }: MenuCardProps) {
             alt={item.name}
             fill
             className="object-cover"
-            sizes="76vw"
+            sizes="(min-width: 1024px) 487px, 76vw"
             priority={false}
             style={
               !item.isAvailable

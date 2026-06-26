@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  useEffect,
   useImperativeHandle,
   useRef,
   useState,
@@ -34,12 +35,10 @@ const SWIPE_THRESHOLD = 50;
 /** Card slide animation duration in milliseconds. */
 const ANIMATION_DURATION = 250;
 
-/**
- * Each card occupies 76vw of the viewport width.
- * The first card starts with a left padding equal to the gap (12 px).
- * A 12px gap separates adjacent cards in the track.
- */
-const CARD_WIDTH_VW = 76;
+/** Each card occupies this fraction of the container width. */
+const CARD_WIDTH_RATIO = 0.76;
+
+/** Gap between adjacent cards in pixels. */
 const CARD_GAP_PX = 12;
 
 // ---------------------------------------------------------------------------
@@ -60,6 +59,25 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
     const isAnimating = useRef(false);
 
     // -----------------------------------------------------------------------
+    // Container measurement — card widths are relative to the container, not
+    // the viewport, so they stay correct inside a constrained 640px column.
+    // -----------------------------------------------------------------------
+
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [cardWidthPx, setCardWidthPx] = useState(0);
+
+    useEffect(() => {
+      const el = containerRef.current;
+      if (!el) return;
+      const update = () =>
+        setCardWidthPx(el.getBoundingClientRect().width * CARD_WIDTH_RATIO);
+      update();
+      const ro = new ResizeObserver(update);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, []);
+
+    // -----------------------------------------------------------------------
     // Touch / mouse drag tracking
     // -----------------------------------------------------------------------
 
@@ -68,12 +86,13 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
     const isDragging = useRef(false);
 
     // -----------------------------------------------------------------------
-    // Track position
-    // Each step moves by one card width (in vw) + the inter-card gap (in px).
-    // This places the active card's left edge at CARD_LEFT_PADDING_VW from the container.
+    // Track position — pure pixels once the container has been measured.
     // -----------------------------------------------------------------------
 
-    const trackTranslateX = `calc(-${currentIndex} * (${CARD_WIDTH_VW}vw + ${CARD_GAP_PX}px))`;
+    const trackTranslateX =
+      cardWidthPx > 0
+        ? `${-currentIndex * (cardWidthPx + CARD_GAP_PX)}px`
+        : `calc(-${currentIndex} * (${CARD_WIDTH_RATIO * 100}vw + ${CARD_GAP_PX}px))`;
 
     // -----------------------------------------------------------------------
     // Navigation helpers
@@ -191,6 +210,7 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
 
     return (
       <div
+        ref={containerRef}
         className="w-full h-[60vh] overflow-hidden relative select-none"
         style={{ touchAction: 'pan-y' }}
         onTouchStart={onTouchStart}
@@ -221,7 +241,7 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
               key={item.id}
               className="h-full shrink-0 transition-opacity duration-200"
               style={{
-                width: `${CARD_WIDTH_VW}vw`,
+                width: cardWidthPx > 0 ? `${cardWidthPx}px` : `${CARD_WIDTH_RATIO * 100}vw`,
                 opacity: i === currentIndex ? 1 : 0.5,
               }}
             >

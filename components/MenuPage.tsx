@@ -18,7 +18,7 @@ export default function MenuPage({ sections }: MenuPageProps) {
   const [logoError, setLogoError] = useState(false);
 
   return (
-    <div className="flex flex-col h-screen bg-white">
+    <div className="flex flex-col h-screen lg:h-full bg-white">
       {/* Co-branded sticky header */}
       <header className="sticky top-0 z-20 h-14 flex items-center px-4 bg-white border-b border-gray-100 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
@@ -67,7 +67,7 @@ export default function MenuPage({ sections }: MenuPageProps) {
       {/* "I am done" button — full-width, pinned at 5vh from viewport bottom */}
       <button
         type="button"
-        className="fixed left-4 right-4 py-4 rounded-2xl text-white font-semibold text-base shadow-lg z-30"
+        className="fixed lg:absolute left-4 right-4 py-4 rounded-2xl text-white font-semibold text-base shadow-lg z-30"
         style={{ backgroundColor: '#E3000F', bottom: '5vh' }}
         aria-label="I am done"
       >
