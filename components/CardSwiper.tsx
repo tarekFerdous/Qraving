@@ -35,12 +35,12 @@ const SWIPE_THRESHOLD = 50;
 const ANIMATION_DURATION = 250;
 
 /**
- * Each card occupies 96vw of the viewport width.
- * The active card is offset 2vw from the left edge, giving 2% breathing room
- * on each side and causing adjacent cards to peek in at the edges.
+ * Each card occupies 76vw of the viewport width.
+ * The first card starts with a left padding equal to the gap (12 px).
+ * A 12px gap separates adjacent cards in the track.
  */
-const CARD_WIDTH_VW = 96;
-const CARD_LEFT_PADDING_VW = 2;
+const CARD_WIDTH_VW = 76;
+const CARD_GAP_PX = 12;
 
 // ---------------------------------------------------------------------------
 // Component
@@ -69,11 +69,11 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
 
     // -----------------------------------------------------------------------
     // Track position
-    // translateX(Xvw) where X = CARD_LEFT_PADDING_VW - currentIndex * CARD_WIDTH_VW
+    // Each step moves by one card width (in vw) + the inter-card gap (in px).
     // This places the active card's left edge at CARD_LEFT_PADDING_VW from the container.
     // -----------------------------------------------------------------------
 
-    const trackTranslateX = `${CARD_LEFT_PADDING_VW - currentIndex * CARD_WIDTH_VW}vw`;
+    const trackTranslateX = `calc(-${currentIndex} * (${CARD_WIDTH_VW}vw + ${CARD_GAP_PX}px))`;
 
     // -----------------------------------------------------------------------
     // Navigation helpers
@@ -191,7 +191,7 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
 
     return (
       <div
-        className="w-full h-[70vh] overflow-hidden relative select-none"
+        className="w-full h-[60vh] overflow-hidden relative select-none"
         style={{ touchAction: 'pan-y' }}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
@@ -208,6 +208,7 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
         <div
           className="flex h-full"
           style={{
+            gap: `${CARD_GAP_PX}px`,
             transform: `translateX(${trackTranslateX})`,
             transition: isTransitioning
               ? `transform ${ANIMATION_DURATION}ms ease-out`

@@ -44,17 +44,6 @@ export interface MenuSection {
 // TheMealDB API response shapes
 // ---------------------------------------------------------------------------
 
-interface MealDBCategory {
-  idCategory: string;
-  strCategory: string;
-  strCategoryThumb: string;
-  strCategoryDescription: string;
-}
-
-interface MealDBCategoriesResponse {
-  categories: MealDBCategory[];
-}
-
 interface MealDBSummary {
   idMeal: string;
   strMeal: string;
@@ -155,18 +144,8 @@ function deriveAllergens(idMeal: string): AllergenInfo[] {
 
 const CACHE_OPTIONS: RequestInit = { next: { revalidate: 3600 } };
 
-async function fetchCategories(): Promise<MealDBCategory[]> {
-  const res = await fetch(
-    'https://www.themealdb.com/api/json/v1/1/categories.php',
-    CACHE_OPTIONS
-  );
-  if (!res.ok) return [];
-  const data: MealDBCategoriesResponse = await res.json();
-  return data.categories ?? [];
-}
-
-async function fetchMealsByCategory(category: string): Promise<MealDBSummary[]> {
-  const url = `https://www.themealdb.com/api/json/v1/1/filter.php?c=${encodeURIComponent(category)}`;
+async function fetchMealsByArea(area: string): Promise<MealDBSummary[]> {
+  const url = `https://www.themealdb.com/api/json/v1/1/filter.php?a=${encodeURIComponent(area)}`;
   const res = await fetch(url, CACHE_OPTIONS);
   if (!res.ok) return [];
   const data: MealDBFilterResponse = await res.json();
@@ -211,58 +190,43 @@ function mapDetailToMenuItem(detail: MealDBDetail): MenuItem {
 // Public API
 // ---------------------------------------------------------------------------
 
+const MENU_AREAS = [
+  { id: 'italian',  name: 'Italian Cuisine',  description: 'Classic pasta, risotto, and more.', area: 'Italian'  },
+  { id: 'greek',    name: 'Greek Cuisine',     description: 'Mediterranean flavours from Greece.', area: 'Greek'    },
+  { id: 'japanese', name: 'Japanese Cuisine',  description: 'Traditional dishes from Japan.',    area: 'Japanese' },
+  { id: 'mexican',  name: 'Mexican Cuisine',   description: 'Bold, vibrant Mexican flavours.',   area: 'Mexican'  },
+];
+
 /**
- * Fetches up to 6 meal categories from TheMealDB, then for each category
- * fetches up to 5 meals (with full detail), and returns them as an array
- * of MenuSection objects.
+ * Fetches up to 7 meals per cuisine area from TheMealDB in parallel,
+ * returning one MenuSection per area. Sections with no results are dropped.
  *
  * All fetch calls are cached by Next.js for 1 hour (revalidate: 3600).
- * Returns an empty array on any top-level failure.
  */
 export async function getMenu(): Promise<MenuSection[]> {
-  try {
-    const categories = await fetchCategories();
-    const selectedCategories = categories.slice(0, 6);
+  const sections = await Promise.all(
+    MENU_AREAS.map(async ({ id, name, description, area }) => {
+      try {
+        const summaries = await fetchMealsByArea(area);
+        const items: MenuItem[] = (
+          await Promise.all(
+            summaries.slice(0, 7).map(async (summary): Promise<MenuItem | null> => {
+              try {
+                const detail = await fetchMealDetail(summary.idMeal);
+                if (!detail) return null;
+                return mapDetailToMenuItem(detail);
+              } catch {
+                return null;
+              }
+            })
+          )
+        ).filter((item): item is MenuItem => item !== null);
+        return { id, name, description, items };
+      } catch {
+        return { id, name, description, items: [] };
+      }
+    })
+  );
 
-    const sections: MenuSection[] = await Promise.all(
-      selectedCategories.map(async (cat): Promise<MenuSection> => {
-        try {
-          const summaries = await fetchMealsByCategory(cat.strCategory);
-          const selectedSummaries = summaries.slice(0, 5);
-
-          const items: MenuItem[] = (
-            await Promise.all(
-              selectedSummaries.map(async (summary): Promise<MenuItem | null> => {
-                try {
-                  const detail = await fetchMealDetail(summary.idMeal);
-                  if (!detail) return null;
-                  return mapDetailToMenuItem(detail);
-                } catch {
-                  return null;
-                }
-              })
-            )
-          ).filter((item): item is MenuItem => item !== null);
-
-          return {
-            id: cat.idCategory,
-            name: cat.strCategory,
-            description: cat.strCategoryDescription.slice(0, 200),
-            items,
-          };
-        } catch {
-          return {
-            id: cat.idCategory,
-            name: cat.strCategory,
-            description: cat.strCategoryDescription.slice(0, 200),
-            items: [],
-          };
-        }
-      })
-    );
-
-    return sections;
-  } catch {
-    return [];
-  }
+  return sections.filter((s) => s.items.length > 0);
 }

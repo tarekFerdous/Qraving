@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { MenuSection, MenuItem } from '@/lib/menu';
 import SectionNavigator from '@/components/SectionNavigator';
 import AddToCartSheet from '@/components/AddToCartSheet';
+import Image from 'next/image';
 
 interface MenuPageProps {
   sections: MenuSection[];
@@ -14,22 +15,32 @@ export default function MenuPage({ sections }: MenuPageProps) {
   const [activeSectionName, setActiveSectionName] = useState<string>(
     sections[0]?.name ?? ''
   );
+  const [logoError, setLogoError] = useState(false);
 
   return (
     <div className="flex flex-col h-screen bg-white">
       {/* Co-branded sticky header */}
-      <header className="sticky top-0 z-20 h-14 flex items-center justify-between px-4 bg-white border-b border-gray-100 shrink-0">
-        <span className="font-bold text-xl" style={{ color: '#E3000F' }}>
-          Qraving
-        </span>
-        {/* Restaurant logo placeholder — swap this element for a real <img> when asset is available */}
-        <div
-          className="w-10 h-10 rounded-xl bg-gray-200 flex items-center justify-center overflow-hidden"
-          aria-label="Restaurant logo placeholder"
-        >
-          <span className="text-gray-400 text-[9px] font-medium text-center leading-tight px-1">
-            Logo
+      <header className="sticky top-0 z-20 h-14 flex items-center px-4 bg-white border-b border-gray-100 shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-bold text-xl shrink-0" style={{ color: '#E3000F' }}>
+            Qraving
           </span>
+          <span className="text-gray-400 font-medium shrink-0">-</span>
+          {logoError ? (
+            <span className="font-semibold text-gray-800 text-sm truncate">
+              Gordon&apos;s Kitchen
+            </span>
+          ) : (
+            <Image
+              src="/logos/gordons-kitchen.svg"
+              alt="Gordon's Kitchen"
+              width={160}
+              height={28}
+              className="h-7 w-auto max-w-[160px] object-contain"
+              onError={() => setLogoError(true)}
+              priority
+            />
+          )}
         </div>
       </header>
 
@@ -53,10 +64,10 @@ export default function MenuPage({ sections }: MenuPageProps) {
         onClose={() => setSelectedItem(null)}
       />
 
-      {/* "I am done" button — full-width, pinned at bottom with 5vh breathing room */}
+      {/* "I am done" button — full-width, pinned at 5vh from viewport bottom */}
       <button
         type="button"
-        className="fixed left-4 right-4 py-4 rounded-2xl text-white font-semibold text-base shadow-lg z-10"
+        className="fixed left-4 right-4 py-4 rounded-2xl text-white font-semibold text-base shadow-lg z-30"
         style={{ backgroundColor: '#E3000F', bottom: '5vh' }}
         aria-label="I am done"
       >

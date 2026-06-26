@@ -94,7 +94,7 @@ export default function MenuCard({ item, onAddToCart }: MenuCardProps) {
             alt={item.name}
             fill
             className="object-cover"
-            sizes="96vw"
+            sizes="76vw"
             priority={false}
             style={
               !item.isAvailable
@@ -126,23 +126,29 @@ export default function MenuCard({ item, onAddToCart }: MenuCardProps) {
             </div>
           )}
 
-          {/* Bottom blur overlay — covers the bottom ~40% of the card */}
+          {/* Full-card blur overlay — 0 blur at top, full blur at bottom */}
           <div
-            className="absolute inset-x-0 bottom-0 z-20"
-            style={{ height: '40%' }}
+            className="absolute inset-0 z-20 overflow-hidden"
+            style={{ borderRadius: '24px' }}
           >
-            {/* Blur + gradient layer — fades from transparent at top to frosted at bottom */}
+            {/* Fake blur: mask fades from fully transparent (top) to fully opaque (bottom) */}
+            <div
+              className="absolute"
+              style={{
+                inset: '-20px',
+                backgroundImage: `url(${item.imageUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                filter: 'blur(18px)',
+                maskImage: 'linear-gradient(to bottom, transparent 30%, black 100%)',
+                WebkitMaskImage: 'linear-gradient(to bottom, transparent 30%, black 100%)',
+              }}
+            />
+            {/* Dark scrim — same gradient shape as blur, darkens bottom for text legibility */}
             <div
               className="absolute inset-0"
               style={{
-                backdropFilter: 'blur(16px)',
-                WebkitBackdropFilter: 'blur(16px)',
-                maskImage:
-                  'linear-gradient(to bottom, transparent 0%, black 45%)',
-                WebkitMaskImage:
-                  'linear-gradient(to bottom, transparent 0%, black 45%)',
-                background:
-                  'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.75) 100%)',
+                background: 'linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.65) 100%)',
               }}
             />
 
