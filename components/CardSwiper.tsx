@@ -192,6 +192,7 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
     return (
       <div
         className="w-full h-[70vh] overflow-hidden relative select-none"
+        style={{ touchAction: 'pan-y' }}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
         onMouseDown={onMouseDown}

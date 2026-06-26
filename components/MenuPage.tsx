@@ -43,7 +43,6 @@ export default function MenuPage({ sections }: MenuPageProps) {
         <SectionNavigator
           sections={sections}
           onAddToCart={setSelectedItem}
-          isPeekPaused={!!selectedItem}
           onActiveSectionChange={setActiveSectionName}
         />
       </div>
