@@ -23,6 +23,9 @@ const SWIPE_THRESHOLD = 50;
 /** Vertical section slide animation duration in milliseconds. */
 const SECTION_ANIMATION_DURATION = 250;
 
+/** Minimum horizontal movement (px) before entering live drag mode. */
+const DRAG_JITTER_THRESHOLD = 4;
+
 
 // ---------------------------------------------------------------------------
 // Component
@@ -63,8 +66,36 @@ export default function SectionNavigator({
   // Gesture start coordinates for the in-flight touch / mouse gesture.
   const gestureStart = useRef<Point | null>(null);
 
-  // Card viewport element — host for the non-passive touchmove listener below.
+  // True while the current gesture has been identified as horizontal-dominant,
+  // meaning live drag is in flight and release should call snapToNearest().
+  const isDraggingHorizontally = useRef(false);
+
+  // Axis lock for the current gesture — set once the first movement clears the
+  // jitter threshold. Null means undetermined (gesture just started or gesture
+  // was purely sub-threshold). Locked on the first significant movement and
+  // cleared on every gesture start, so a vertical swipe that starts with a tiny
+  // horizontal wobble is never misclassified as a drag.
+  const gestureAxis = useRef<'horizontal' | 'vertical' | null>(null);
+
+  // Card viewport element — host for the non-passive touchmove listener and
+  // the ResizeObserver that measures section height for pixel-based translation.
   const viewportRef = useRef<HTMLDivElement>(null);
+
+  // Pixel height of one section slot. Kept as a px value so the vertical
+  // translate is pixel-exact on iOS Safari, where translateY(-100%) on a
+  // flex-1 child can resolve to the wrong height (flex-determined vs explicit).
+  const [sectionHeightPx, setSectionHeightPx] = useState(0);
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setSectionHeightPx(entry.contentRect.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // -------------------------------------------------------------------------
   // Non-passive touchmove guard.
@@ -82,10 +113,33 @@ export default function SectionNavigator({
     if (!el) return;
 
     const onTouchMove = (e: TouchEvent) => {
-      const flipped =
-        swiperRefs.current[activeSectionRef.current]?.isActiveCardFlipped() ??
-        false;
+      const activeSwiper = swiperRefs.current[activeSectionRef.current];
+      const flipped = activeSwiper?.isActiveCardFlipped() ?? false;
       if (!flipped) e.preventDefault();
+
+      const start = gestureStart.current;
+      if (!start || flipped) return;
+
+      const touch = e.touches[0];
+      const dx = touch.clientX - start.x;
+      const dy = touch.clientY - start.y;
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+
+      // Lock the gesture axis once movement clears the jitter threshold.
+      // After this point the axis cannot change — a gesture is either a
+      // horizontal drag or a vertical swipe, never both.
+      if (!gestureAxis.current) {
+        if (absDx > DRAG_JITTER_THRESHOLD || absDy > DRAG_JITTER_THRESHOLD) {
+          gestureAxis.current = absDx >= absDy ? 'horizontal' : 'vertical';
+        }
+        return; // Wait for axis to be determined before acting
+      }
+
+      if (gestureAxis.current === 'horizontal') {
+        isDraggingHorizontally.current = true;
+        activeSwiper?.drag(dx);
+      }
     };
 
     el.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -161,11 +215,20 @@ export default function SectionNavigator({
   function onTouchStart(e: React.TouchEvent<HTMLDivElement>) {
     const t = e.touches[0];
     gestureStart.current = { x: t.clientX, y: t.clientY };
+    gestureAxis.current = null;
   }
 
   function onTouchEnd(e: React.TouchEvent<HTMLDivElement>) {
     const start = gestureStart.current;
     gestureStart.current = null;
+    gestureAxis.current = null;
+
+    if (isDraggingHorizontally.current) {
+      isDraggingHorizontally.current = false;
+      swiperRefs.current[activeSectionRef.current]?.snapToNearest();
+      return;
+    }
+
     if (!start) return;
     const t = e.changedTouches[0];
     applyIntent(start, { x: t.clientX, y: t.clientY });
@@ -173,17 +236,56 @@ export default function SectionNavigator({
 
   function onMouseDown(e: React.MouseEvent<HTMLDivElement>) {
     gestureStart.current = { x: e.clientX, y: e.clientY };
+    gestureAxis.current = null;
+  }
+
+  function onMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    const start = gestureStart.current;
+    if (!start) return;
+
+    const activeSwiper = swiperRefs.current[activeSectionRef.current];
+    if (activeSwiper?.isActiveCardFlipped()) return;
+
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    if (!gestureAxis.current) {
+      if (absDx > DRAG_JITTER_THRESHOLD || absDy > DRAG_JITTER_THRESHOLD) {
+        gestureAxis.current = absDx >= absDy ? 'horizontal' : 'vertical';
+      }
+      return;
+    }
+
+    if (gestureAxis.current === 'horizontal') {
+      isDraggingHorizontally.current = true;
+      activeSwiper?.drag(dx);
+    }
   }
 
   function onMouseUp(e: React.MouseEvent<HTMLDivElement>) {
     const start = gestureStart.current;
     gestureStart.current = null;
+    gestureAxis.current = null;
+
+    if (isDraggingHorizontally.current) {
+      isDraggingHorizontally.current = false;
+      swiperRefs.current[activeSectionRef.current]?.snapToNearest();
+      return;
+    }
+
     if (!start) return;
     applyIntent(start, { x: e.clientX, y: e.clientY });
   }
 
   function onMouseLeave() {
     gestureStart.current = null;
+    gestureAxis.current = null;
+    if (isDraggingHorizontally.current) {
+      isDraggingHorizontally.current = false;
+      swiperRefs.current[activeSectionRef.current]?.snapToNearest();
+    }
   }
 
   if (sections.length === 0) return null;
@@ -205,6 +307,7 @@ export default function SectionNavigator({
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
         onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseLeave}
       >
@@ -215,7 +318,9 @@ export default function SectionNavigator({
         <div
           className="flex flex-col h-full"
           style={{
-            transform: `translateY(-${activeSection * 100}%)`,
+            transform: sectionHeightPx > 0
+              ? `translateY(-${activeSection * sectionHeightPx}px)`
+              : `translateY(-${activeSection * 100}%)`,
             transition: `transform ${SECTION_ANIMATION_DURATION}ms ease-out`,
             willChange: 'transform',
           }}

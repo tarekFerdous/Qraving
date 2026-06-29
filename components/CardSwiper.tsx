@@ -9,6 +9,7 @@ import {
 } from 'react';
 import MenuCard from '@/components/MenuCard';
 import { MenuItem } from '@/lib/menu';
+import { computeCarouselOffset, resolveSnapIndex } from '@/lib/carousel';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,6 +26,10 @@ export interface CardSwiperRef {
   resetFlips: () => void;
   /** Whether the currently-active card is showing its back face. */
   isActiveCardFlipped: () => boolean;
+  /** Update live drag offset (px delta from gesture start). No-ops while animating. */
+  drag: (dx: number) => void;
+  /** Snap to the nearest card based on current drag offset; resets drag to 0. */
+  snapToNearest: () => void;
 }
 
 interface CardSwiperProps {
@@ -75,15 +80,20 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
      */
     const [isTransitioning, setIsTransitioning] = useState(false);
 
+    /** Live drag offset in pixels (delta from gesture start). */
+    const [dragOffsetPx, setDragOffsetPx] = useState(0);
+
     /** Prevent overlapping card animations. */
     const isAnimating = useRef(false);
 
-    // Mirror current/flip state into refs so the imperative handle reads fresh
-    // values regardless of when the gesture engine calls it.
+    // Mirror current/flip/drag state into refs so the imperative handle reads
+    // fresh values regardless of when the gesture engine calls it.
     const currentIndexRef = useRef(currentIndex);
     currentIndexRef.current = currentIndex;
     const flippedIndexRef = useRef(flippedIndex);
     flippedIndexRef.current = flippedIndex;
+    const dragOffsetPxRef = useRef(dragOffsetPx);
+    dragOffsetPxRef.current = dragOffsetPx;
 
     // -----------------------------------------------------------------------
     // Container measurement — card widths are relative to the container, not
@@ -92,13 +102,20 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
 
     const containerRef = useRef<HTMLDivElement>(null);
     const [cardWidthPx, setCardWidthPx] = useState(0);
+    const [contentWidthPx, setContentWidthPx] = useState(0);
+    const cardWidthPxRef = useRef(0);
+    cardWidthPxRef.current = cardWidthPx;
 
     useEffect(() => {
       const el = containerRef.current;
       if (!el) return;
       const ro = new ResizeObserver((entries) => {
         const entry = entries[0];
-        if (entry) setCardWidthPx(entry.contentRect.width * CARD_WIDTH_RATIO);
+        if (entry) {
+          const { width } = entry.contentRect;
+          setContentWidthPx(width);
+          setCardWidthPx(width * CARD_WIDTH_RATIO);
+        }
       });
       ro.observe(el);
       return () => ro.disconnect();
@@ -106,11 +123,12 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
 
     // -----------------------------------------------------------------------
     // Track position — pure pixels once the container has been measured.
+    // Falls back to a CSS calc() before the ResizeObserver fires.
     // -----------------------------------------------------------------------
 
     const trackTranslateX =
       cardWidthPx > 0
-        ? `${-currentIndex * (cardWidthPx + CARD_GAP_PX)}px`
+        ? computeCarouselOffset(currentIndex, dragOffsetPx, cardWidthPx, CARD_GAP_PX, contentWidthPx)
         : `calc(-${currentIndex} * (${CARD_WIDTH_RATIO * 100}vw + ${CARD_GAP_PX}px))`;
 
     // -----------------------------------------------------------------------
@@ -123,6 +141,7 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
 
       // Leaving the current card → flip any flipped card back to front (animated).
       setFlippedIndex(null);
+      setDragOffsetPx(0);
       setIsTransitioning(true);
       setCurrentIndex(nextIndex);
 
@@ -157,8 +176,9 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
       },
       goToCard(index: number) {
         const clamped = Math.max(0, Math.min(index, items.length - 1));
-        // Instant jump — no animation. Always lands front-first.
+        // Instant jump — no animation. Always lands front-first with no drag state.
         setFlippedIndex(null);
+        setDragOffsetPx(0);
         setIsTransitioning(false);
         setCurrentIndex(clamped);
         isAnimating.current = false;
@@ -169,6 +189,21 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
       },
       isActiveCardFlipped() {
         return flippedIndexRef.current === currentIndexRef.current;
+      },
+      drag(dx: number) {
+        if (isAnimating.current) return;
+        setDragOffsetPx(dx);
+      },
+      snapToNearest() {
+        if (isAnimating.current) return;
+        const nearest = resolveSnapIndex(
+          currentIndexRef.current,
+          dragOffsetPxRef.current,
+          cardWidthPxRef.current,
+          CARD_GAP_PX,
+          items.length
+        );
+        navigateTo(nearest);
       },
     }));
 
