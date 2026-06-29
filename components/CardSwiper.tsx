@@ -229,9 +229,9 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
           className="flex h-full"
           style={{
             gap: `${CARD_GAP_PX}px`,
-            transform: `translateX(${trackTranslateX})`,
+            transform: `translate3d(${trackTranslateX}, 0, 0)`,
             transition: isTransitioning
-              ? `transform ${ANIMATION_DURATION}ms ease-out`
+              ? `transform ${ANIMATION_DURATION}ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`
               : 'none',
             willChange: 'transform',
           }}

@@ -319,9 +319,9 @@ export default function SectionNavigator({
           className="flex flex-col h-full"
           style={{
             transform: sectionHeightPx > 0
-              ? `translateY(-${activeSection * sectionHeightPx}px)`
-              : `translateY(-${activeSection * 100}%)`,
-            transition: `transform ${SECTION_ANIMATION_DURATION}ms ease-out`,
+              ? `translate3d(0, -${activeSection * sectionHeightPx}px, 0)`
+              : `translate3d(0, -${activeSection * 100}%, 0)`,
+            transition: `transform ${SECTION_ANIMATION_DURATION}ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`,
             willChange: 'transform',
           }}
         >
@@ -338,18 +338,25 @@ export default function SectionNavigator({
                 </p>
               </div>
 
-              {/* Cards fill the remaining height (taller cards, same width). */}
+              {/* Cards fill the remaining height (taller cards, same width).
+                  Only mount the active section and its immediate neighbours —
+                  off-screen sections are empty divs so their card images and
+                  blur textures are not held in GPU memory. The target section
+                  is always already within this ±1 window before navigation
+                  fires, so there is no visible blank flash during the slide. */}
               <div className="flex-1 min-h-0">
-                <CardSwiper
-                  ref={(el) => {
-                    swiperRefs.current[i] = el;
-                  }}
-                  items={section.items}
-                  onNextSection={() => goToSection(i + 1)}
-                  onPrevSection={(opts) => goToSection(i - 1, opts)}
-                  onAddToCart={onAddToCart}
-                  priorityLoad={i === 0}
-                />
+                {Math.abs(i - activeSection) <= 1 && (
+                  <CardSwiper
+                    ref={(el) => {
+                      swiperRefs.current[i] = el;
+                    }}
+                    items={section.items}
+                    onNextSection={() => goToSection(i + 1)}
+                    onPrevSection={(opts) => goToSection(i - 1, opts)}
+                    onAddToCart={onAddToCart}
+                    priorityLoad={i === 0}
+                  />
+                )}
               </div>
             </div>
           ))}
