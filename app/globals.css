@@ -3,10 +3,12 @@
 
 html,
 body {
+  /* position: fixed is the only reliable way to kill iOS Safari's
+     pull-to-refresh / rubber-band reload — overflow: hidden alone is ignored
+     by WebKit on <body>. width/height: 100% restore the layout footprint. */
+  position: fixed;
+  width: 100%;
   height: 100%;
-  /* Fixed app shell — the menu manages its own full-height regions, so the
-     document itself never scrolls. Disabling document overflow and overscroll
-     chaining kills the iOS/Chrome rubber-band bounce on vertical swipes. */
   overflow: hidden;
   overscroll-behavior: none;
 }

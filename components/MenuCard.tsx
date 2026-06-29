@@ -17,6 +17,8 @@ interface MenuCardProps {
   flipped: boolean;
   /** Request a flip-state change (front ↔ back). */
   onFlipChange: (flipped: boolean) => void;
+  /** True for the above-the-fold LCP image to force eager loading. */
+  priority?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -28,6 +30,7 @@ export default function MenuCard({
   onAddToCart,
   flipped,
   onFlipChange,
+  priority = false,
 }: MenuCardProps) {
   const hasAllergens = item.allergens.length > 0;
 
@@ -72,7 +75,7 @@ export default function MenuCard({
             fill
             className="object-cover"
             sizes="(min-width: 1024px) 487px, 76vw"
-            priority={false}
+            priority={priority}
             style={
               !item.isAvailable
                 ? { filter: 'grayscale(0.7) brightness(0.75)' }
@@ -127,9 +130,6 @@ export default function MenuCard({
                 filter: 'blur(18px)',
                 maskImage: 'linear-gradient(to bottom, transparent 30%, black 100%)',
                 WebkitMaskImage: 'linear-gradient(to bottom, transparent 30%, black 100%)',
-                transform: 'translateZ(0)',
-                backfaceVisibility: 'hidden',
-                WebkitBackfaceVisibility: 'hidden',
               }}
             />
             {/* Dark scrim — same gradient shape as blur, darkens bottom for text legibility */}

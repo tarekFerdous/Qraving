@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import { ChevronUp } from 'lucide-react';
 import CardSwiper, { CardSwiperRef } from '@/components/CardSwiper';
@@ -22,6 +22,7 @@ const SWIPE_THRESHOLD = 50;
 
 /** Vertical section slide animation duration in milliseconds. */
 const SECTION_ANIMATION_DURATION = 250;
+
 
 // ---------------------------------------------------------------------------
 // Component
@@ -61,6 +62,35 @@ export default function SectionNavigator({
 
   // Gesture start coordinates for the in-flight touch / mouse gesture.
   const gestureStart = useRef<Point | null>(null);
+
+  // Card viewport element — host for the non-passive touchmove listener below.
+  const viewportRef = useRef<HTMLDivElement>(null);
+
+  // -------------------------------------------------------------------------
+  // Non-passive touchmove guard.
+  //
+  // React's `onTouchMove` is passive and cannot call `preventDefault()`.
+  // iOS WebKit claims any un-prevented vertical touchmove for pull-to-refresh
+  // on the very first event — before any threshold or axis check can fire.
+  // The fix: prevent every touchmove unconditionally, UNLESS the active card
+  // is flipped (its back face owns native pan-y scroll via overflow-y: auto +
+  // overscroll-behavior-y: contain). No start-coord dependency, no threshold,
+  // no gap for iOS to sneak into.
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+
+    const onTouchMove = (e: TouchEvent) => {
+      const flipped =
+        swiperRefs.current[activeSectionRef.current]?.isActiveCardFlipped() ??
+        false;
+      if (!flipped) e.preventDefault();
+    };
+
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => el.removeEventListener('touchmove', onTouchMove);
+  }, []);
 
   // -------------------------------------------------------------------------
   // Coordinator — maps a resolved intent to exactly one navigation action.
@@ -170,8 +200,8 @@ export default function SectionNavigator({
           nothing vertically scrollable, so vertical swipes still resolve to a
           category change on release. */}
       <div
+        ref={viewportRef}
         className="flex-1 overflow-hidden"
-        style={{ touchAction: 'pan-y' }}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
         onMouseDown={onMouseDown}
@@ -213,6 +243,7 @@ export default function SectionNavigator({
                   onNextSection={() => goToSection(i + 1)}
                   onPrevSection={(opts) => goToSection(i - 1, opts)}
                   onAddToCart={onAddToCart}
+                  priorityLoad={i === 0}
                 />
               </div>
             </div>

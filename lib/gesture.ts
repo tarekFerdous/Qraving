@@ -53,3 +53,52 @@ export function resolveGesture(
   if (absY < threshold) return 'none';
   return dy < 0 ? 'up' : 'down';
 }
+
+/**
+ * Decide whether an in-flight touch move should be prevented from reaching the
+ * browser (i.e. whether to call `preventDefault()` on the `touchmove` event).
+ *
+ * This is the second pure seam for menu navigation. Where `resolveGesture`
+ * decides what a *completed* gesture means, this decides — mid-gesture — whether
+ * the move belongs to the app or to the browser's native vertical pull
+ * (pull-to-refresh / overscroll, which on iOS WebKit reloads the whole page).
+ *
+ * It owns no DOM and no axis/threshold logic beyond what is stated here; the
+ * non-passive `touchmove` listener delegates the entire decision to it.
+ *
+ * Rules (mirroring the axis-dominance convention of `resolveGesture`):
+ *  - Active card flipped → `false`. Its back face owns native `pan-y` scrolling.
+ *  - Horizontal-dominant move (incl. the |dx| === |dy| tie) → `false`.
+ *    Horizontal card nav resolves on release and never triggers a native
+ *    reload; leaving it alone also preserves iOS edge-swipe back navigation.
+ *  - Vertical-dominant move, not flipped, past `threshold` → `true`.
+ *    This is a category-change pan that must be claimed by the app.
+ *  - Sub-threshold / near-zero movement → `false`. Never block taps or jitter.
+ *
+ * @param start     Gesture start coordinates.
+ * @param current   Current touch coordinates for the in-flight move.
+ * @param isFlipped Whether the active card is currently flipped to its back.
+ * @param threshold Minimum vertical movement (px) before claiming the gesture.
+ */
+export function shouldPreventTouchMove(
+  start: Point,
+  current: Point,
+  isFlipped: boolean,
+  threshold: number
+): boolean {
+  // A flipped card's back face owns native vertical scrolling — never block it.
+  if (isFlipped) return false;
+
+  const dx = current.x - start.x;
+  const dy = current.y - start.y;
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+
+  // Horizontal wins on strict-greater magnitude OR on a tie, matching
+  // `resolveGesture`. Horizontal/diagonal-tie moves are left to the browser.
+  if (absX >= absY) return false;
+
+  // Vertical-dominant: only claim the gesture once it clears the threshold,
+  // so taps and tiny jitters keep native behavior.
+  return absY >= threshold;
+}

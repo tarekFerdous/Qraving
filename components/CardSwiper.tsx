@@ -32,6 +32,8 @@ interface CardSwiperProps {
   onNextSection: () => void;
   onPrevSection: (opts: { goToLast: boolean }) => void;
   onAddToCart: (item: MenuItem) => void;
+  /** True for the first section so its first card gets eager LCP image loading. */
+  priorityLoad?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -61,7 +63,7 @@ const CARD_GAP_PX = 12;
 // ---------------------------------------------------------------------------
 
 const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
-  function CardSwiper({ items, onNextSection, onPrevSection, onAddToCart }, ref) {
+  function CardSwiper({ items, onNextSection, onPrevSection, onAddToCart, priorityLoad = false }, ref) {
     const [currentIndex, setCurrentIndex] = useState(0);
 
     /** Index of the card currently flipped to its back, or null if all front. */
@@ -214,6 +216,7 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
                   onAddToCart={onAddToCart}
                   flipped={flippedIndex === i}
                   onFlipChange={(f) => setFlippedIndex(f ? i : null)}
+                  priority={priorityLoad && i === 0}
                 />
                 {/* Peek dimming — only the inactive (side) cards read as secondary. */}
                 {!isActive && (
