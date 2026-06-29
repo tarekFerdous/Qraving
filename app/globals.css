@@ -4,6 +4,11 @@
 html,
 body {
   height: 100%;
+  /* Fixed app shell — the menu manages its own full-height regions, so the
+     document itself never scrolls. Disabling document overflow and overscroll
+     chaining kills the iOS/Chrome rubber-band bounce on vertical swipes. */
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 button {

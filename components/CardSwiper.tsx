@@ -21,6 +21,10 @@ export interface CardSwiperRef {
   prev: () => void;
   /** Instantly jump to a card index (clamped). Used for cross-axis landings. */
   goToCard: (index: number) => void;
+  /** Animate any flipped card back to its front face. */
+  resetFlips: () => void;
+  /** Whether the currently-active card is showing its back face. */
+  isActiveCardFlipped: () => boolean;
 }
 
 interface CardSwiperProps {
@@ -46,15 +50,22 @@ const CARD_GAP_PX = 12;
 // ---------------------------------------------------------------------------
 // Component
 //
-// CardSwiper owns only the horizontal card state and presentation. It no longer
-// captures any gesture itself — the unified gesture engine in SectionNavigator
-// resolves intent and drives this component through the imperative ref. This
-// keeps both axes on one engine and the "one flick = one step" guarantee intact.
+// CardSwiper owns the horizontal card state and the per-card flip state. It no
+// longer captures any gesture itself — the unified gesture engine in
+// SectionNavigator resolves intent and drives this component through the
+// imperative ref, keeping both axes on one engine and "one flick = one step".
+//
+// Flip state lives here (not in MenuCard) so navigation can reset it: moving to
+// another card — or, via the parent, another category — animates the previously
+// flipped card back to its front, and cards always (re)enter front-first.
 // ---------------------------------------------------------------------------
 
 const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
   function CardSwiper({ items, onNextSection, onPrevSection, onAddToCart }, ref) {
     const [currentIndex, setCurrentIndex] = useState(0);
+
+    /** Index of the card currently flipped to its back, or null if all front. */
+    const [flippedIndex, setFlippedIndex] = useState<number | null>(null);
 
     /**
      * When true, the track's CSS transition is active so the card slides
@@ -64,6 +75,13 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
 
     /** Prevent overlapping card animations. */
     const isAnimating = useRef(false);
+
+    // Mirror current/flip state into refs so the imperative handle reads fresh
+    // values regardless of when the gesture engine calls it.
+    const currentIndexRef = useRef(currentIndex);
+    currentIndexRef.current = currentIndex;
+    const flippedIndexRef = useRef(flippedIndex);
+    flippedIndexRef.current = flippedIndex;
 
     // -----------------------------------------------------------------------
     // Container measurement — card widths are relative to the container, not
@@ -101,6 +119,8 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
       if (isAnimating.current) return;
       isAnimating.current = true;
 
+      // Leaving the current card → flip any flipped card back to front (animated).
+      setFlippedIndex(null);
       setIsTransitioning(true);
       setCurrentIndex(nextIndex);
 
@@ -135,10 +155,18 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
       },
       goToCard(index: number) {
         const clamped = Math.max(0, Math.min(index, items.length - 1));
-        // Instant jump — no animation.
+        // Instant jump — no animation. Always lands front-first.
+        setFlippedIndex(null);
         setIsTransitioning(false);
         setCurrentIndex(clamped);
         isAnimating.current = false;
+      },
+      resetFlips() {
+        // Animated flip-back (state change drives MenuCard's 3D flip transition).
+        setFlippedIndex(null);
+      },
+      isActiveCardFlipped() {
+        return flippedIndexRef.current === currentIndexRef.current;
       },
     }));
 
@@ -151,12 +179,14 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
     return (
       <div
         ref={containerRef}
-        className="w-full h-[60vh] overflow-visible relative select-none px-[6px]"
+        className="w-full h-full overflow-visible relative select-none px-[6px]"
       >
         {/*
           Card track — all cards sit side-by-side in a flex row.
           Translating the track centers the active card with breathing room.
-          Adjacent cards peek in at the left and right edges at 50% opacity.
+          Adjacent cards peek in at the edges, dimmed by a scrim overlay so the
+          active card's own content (name, price, description, buttons) is never
+          touched by the slide transition and stays fully visible mid-swipe.
         */}
         <div
           className="flex h-full"
@@ -169,18 +199,33 @@ const CardSwiper = forwardRef<CardSwiperRef, CardSwiperProps>(
             willChange: 'transform',
           }}
         >
-          {items.map((item, i) => (
-            <div
-              key={item.id}
-              className="h-full shrink-0 transition-opacity duration-200"
-              style={{
-                width: cardWidthPx > 0 ? `${cardWidthPx}px` : `${CARD_WIDTH_RATIO * 100}vw`,
-                opacity: i === currentIndex ? 1 : 0.5,
-              }}
-            >
-              <MenuCard item={item} onAddToCart={onAddToCart} />
-            </div>
-          ))}
+          {items.map((item, i) => {
+            const isActive = i === currentIndex;
+            return (
+              <div
+                key={item.id}
+                className="h-full shrink-0 relative"
+                style={{
+                  width: cardWidthPx > 0 ? `${cardWidthPx}px` : `${CARD_WIDTH_RATIO * 100}vw`,
+                }}
+              >
+                <MenuCard
+                  item={item}
+                  onAddToCart={onAddToCart}
+                  flipped={flippedIndex === i}
+                  onFlipChange={(f) => setFlippedIndex(f ? i : null)}
+                />
+                {/* Peek dimming — only the inactive (side) cards read as secondary. */}
+                {!isActive && (
+                  <div
+                    aria-hidden
+                    className="absolute inset-0 rounded-3xl pointer-events-none"
+                    style={{ backgroundColor: 'rgba(232,240,215,0.55)' }}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
