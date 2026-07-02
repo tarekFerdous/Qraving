@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Plus } from 'lucide-react';
 import { MenuItem } from '@/lib/menu';
@@ -12,11 +12,14 @@ import { getDietaryIcon } from '@/lib/dietary';
 
 interface MenuCardProps {
   item: MenuItem;
+  /** Index of this card in the carousel — passed back through onFlipChange. */
+  cardIndex: number;
   onAddToCart: (item: MenuItem) => void;
   /** Flip state is controlled by the parent so navigation can reset it. */
   flipped: boolean;
-  /** Request a flip-state change (front ↔ back). */
-  onFlipChange: (flipped: boolean) => void;
+  /** Request a flip-state change. Receives cardIndex so the parent can use a
+   *  stable useCallback without per-card closures. */
+  onFlipChange: (cardIndex: number, flipped: boolean) => void;
   /** True for the above-the-fold LCP image to force eager loading. */
   priority?: boolean;
 }
@@ -25,8 +28,9 @@ interface MenuCardProps {
 // Component
 // ---------------------------------------------------------------------------
 
-export default function MenuCard({
+function MenuCard({
   item,
+  cardIndex,
   onAddToCart,
   flipped,
   onFlipChange,
@@ -59,13 +63,19 @@ export default function MenuCard({
         }}
       >
         {/* ================================================================
-            FRONT FACE — full-bleed image with bottom blur overlay
+            FRONT FACE — full-bleed image with bottom gradient overlay
         ================================================================ */}
         <div
           className="absolute inset-0 rounded-3xl overflow-hidden"
           style={{
             backfaceVisibility: 'hidden',
             WebkitBackfaceVisibility: 'hidden',
+            // iOS WebKit fallback: backfaceVisibility fails when overflow:hidden
+            // is set on a preserve-3d child. Opacity toggled at the flip midpoint
+            // so the wrong face is always invisible regardless of backface support.
+            opacity: flipped ? 0 : 1,
+            transition: 'opacity 0ms 225ms',
+            pointerEvents: flipped ? 'none' : undefined,
           }}
         >
           {/* Full-bleed photo */}
@@ -76,6 +86,7 @@ export default function MenuCard({
             className="object-cover"
             sizes="(min-width: 1024px) 487px, 76vw"
             priority={priority}
+            loading="eager"
             style={
               !item.isAvailable
                 ? { filter: 'grayscale(0.7) brightness(0.75)' }
@@ -112,49 +123,17 @@ export default function MenuCard({
             </div>
           )}
 
-          {/* Full-card blur overlay — 0 blur at top, full blur at bottom */}
+          {/* Dark gradient scrim — darkens the bottom of the card for text legibility */}
           <div
-            className="absolute inset-0 z-20 overflow-hidden"
-            style={{ borderRadius: '24px' }}
-          >
-            {/* Fake blur: mask fades from fully transparent (top) to fully opaque (bottom).
-                Promoted to its own cached layer (translateZ) so the expensive blur
-                rasterizes once up front rather than during the slide animation. */}
-            <div
-              className="absolute"
-              style={{
-                inset: '-20px',
-                backgroundImage: `url(${item.imageUrl})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                filter: 'blur(18px)',
-                maskImage: 'linear-gradient(to bottom, transparent 30%, black 100%)',
-                WebkitMaskImage: 'linear-gradient(to bottom, transparent 30%, black 100%)',
-              }}
-            />
-            {/* Dark scrim — same gradient shape as blur, darkens bottom for text legibility */}
-            <div
-              className="absolute inset-0"
-              style={{
-                background: 'linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.65) 100%)',
-              }}
-            />
-          </div>
+            className="absolute inset-0 z-20"
+            style={{
+              background: 'linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.65) 100%)',
+            }}
+          />
 
-          {/* Content — name, price, description, action buttons. Kept as a
-              separate, cheap layer (a sibling of the heavy frosted-blur backdrop)
-              so it paints immediately when a card slides into view, instead of
-              waiting for the expensive blur layer to rasterize after the slide.
-              Pinned to its own cached layer (translateZ + backface hidden) so the
-              parent track just translates it rather than repainting it per frame
-              — without this it flashes off-and-back at the start of the slide. */}
+          {/* Content — name, price, description, action buttons */}
           <div
             className="absolute inset-0 z-30 flex flex-col justify-end px-3 pb-3 gap-1.5"
-            style={{
-              transform: 'translateZ(0)',
-              backfaceVisibility: 'hidden',
-              WebkitBackfaceVisibility: 'hidden',
-            }}
           >
               {/* Name + price */}
               <div className="flex items-end justify-between gap-2">
@@ -179,7 +158,7 @@ export default function MenuCard({
                 {/* Allergies & More — triggers 3D flip */}
                 <button
                   type="button"
-                  onClick={() => onFlipChange(true)}
+                  onClick={() => onFlipChange(cardIndex, true)}
                   className="flex-1 py-2 rounded-xl text-white text-sm font-semibold"
                   style={{
                     border: '1px solid rgba(255,255,255,0.45)',
@@ -223,13 +202,17 @@ export default function MenuCard({
             backfaceVisibility: 'hidden',
             WebkitBackfaceVisibility: 'hidden',
             transform: 'rotateY(180deg)',
+            // Matching opacity fallback for the back face.
+            opacity: flipped ? 1 : 0,
+            transition: 'opacity 0ms 225ms',
+            pointerEvents: flipped ? undefined : 'none',
           }}
         >
           {/* Back header */}
           <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 shrink-0">
             <button
               type="button"
-              onClick={() => onFlipChange(false)}
+              onClick={() => onFlipChange(cardIndex, false)}
               aria-label="Back to item"
               className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors shrink-0"
             >
@@ -355,7 +338,7 @@ export default function MenuCard({
               onClick={() => {
                 if (item.isAvailable) {
                   onAddToCart(item);
-                  onFlipChange(false);
+                  onFlipChange(cardIndex, false);
                 }
               }}
               disabled={!item.isAvailable}
@@ -397,3 +380,5 @@ export default function MenuCard({
     </div>
   );
 }
+
+export default memo(MenuCard);
