@@ -5,8 +5,9 @@ import { MenuSection, MenuItem } from '@/lib/menu';
 import SectionNavigator from '@/components/SectionNavigator';
 import AddToCartSheet from '@/components/AddToCartSheet';
 import BasketsSheet from '@/components/BasketsSheet';
+import CheckoutSheet from '@/components/CheckoutSheet';
 import { useSession } from '@/lib/session-context';
-import { createSession } from '@/lib/session';
+import { createSession, UserBasket } from '@/lib/session';
 import Image from 'next/image';
 
 interface MenuPageProps {
@@ -20,8 +21,12 @@ export default function MenuPage({ sections }: MenuPageProps) {
   const [modifyBasketId, setModifyBasketId] = useState<string | null>(null);
   const [awaitingTurn, setAwaitingTurn] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [checkoutBasket, setCheckoutBasket] = useState<UserBasket | null>(null);
   const { session, updateSession } = useSession();
   const basketCount = session.baskets.length;
+
+  // Flatten all menu items for basket total computation in CheckoutSheet
+  const menuItems = sections.flatMap((s) => s.items);
 
   return (
     <div className="flex flex-col h-dvh lg:h-full overflow-hidden bg-qraving-bg">
@@ -95,7 +100,21 @@ export default function MenuPage({ sections }: MenuPageProps) {
           setBasketsOpen(false);
           setModifyBasketId(userId);
         }}
+        onProceedToPayment={(basket) => {
+          setBasketsOpen(false);
+          setCheckoutBasket(basket);
+        }}
       />
+
+      {/* Checkout sheet — opened per-basket from BasketsSheet */}
+      {checkoutBasket && (
+        <CheckoutSheet
+          session={session}
+          basket={checkoutBasket}
+          menuItems={menuItems}
+          onClose={() => setCheckoutBasket(null)}
+        />
+      )}
 
       {/* "Start your turn" full-screen interstitial */}
       {awaitingTurn && (

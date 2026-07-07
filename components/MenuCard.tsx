@@ -144,7 +144,7 @@ function MenuCard({
                   className="text-white font-bold text-base shrink-0"
                   style={{ textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}
                 >
-                  £{item.price.toFixed(2)}
+                  ${item.price.toFixed(2)} CAD
                 </p>
               </div>
 

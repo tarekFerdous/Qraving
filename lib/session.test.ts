@@ -20,6 +20,9 @@ function makeBasket(overrides: Partial<UserBasket> = {}): UserBasket {
     name: 'User 1',
     phone: '+10000000000',
     items: [],
+    paymentStatus: 'pending',
+    paymentMethod: null,
+    helcimTransactionId: null,
     ...overrides,
   }
 }
@@ -41,9 +44,15 @@ function makeItem(overrides: Partial<BasketItem> = {}): BasketItem {
 // ---------------------------------------------------------------------------
 
 describe('createSession', () => {
-  it('returns a session with the given id, userCounter 0, and empty baskets', () => {
+  it('returns a session with the given id, userCounter 0, empty baskets, orderStatus building, and null paymentDeadline', () => {
     const session = createSession('sess-abc')
-    expect(session).toEqual({ id: 'sess-abc', userCounter: 0, baskets: [] })
+    expect(session).toEqual({
+      id: 'sess-abc',
+      userCounter: 0,
+      baskets: [],
+      orderStatus: 'building',
+      paymentDeadline: null,
+    })
   })
 })
 

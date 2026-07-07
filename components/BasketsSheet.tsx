@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSession } from '@/lib/session-context';
+import { UserBasket } from '@/lib/session';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -11,13 +12,14 @@ interface BasketsSheetProps {
   open: boolean;
   onClose: () => void;
   onModify?: (userId: string) => void; // placeholder, wired up in issue #69
+  onProceedToPayment?: (basket: UserBasket) => void;
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export default function BasketsSheet({ open, onClose, onModify }: BasketsSheetProps) {
+export default function BasketsSheet({ open, onClose, onModify, onProceedToPayment }: BasketsSheetProps) {
   const { session } = useSession();
 
   // --- Animation / mount state ---
@@ -165,6 +167,18 @@ export default function BasketsSheet({ open, onClose, onModify }: BasketsSheetPr
                         >
                           Modify
                         </button>
+                        {basket.items.length > 0 && onProceedToPayment && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onProceedToPayment(basket);
+                            }}
+                            className="text-xs font-semibold text-white bg-qraving-red px-3 py-1 rounded-full"
+                          >
+                            Pay
+                          </button>
+                        )}
                         {/* Chevron */}
                         <svg
                           className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${

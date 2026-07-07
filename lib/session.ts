@@ -2,6 +2,8 @@ export type Session = {
   id: string
   userCounter: number
   baskets: UserBasket[]
+  orderStatus: 'building' | 'payment_pending' | 'fully_paid' | 'submitted' | 'accepted' | 'rejected'
+  paymentDeadline: string | null  // ISO-8601, null by default
 }
 
 export type UserBasket = {
@@ -9,6 +11,9 @@ export type UserBasket = {
   name: string        // "User 1" default, max 50 chars
   phone: string       // E.164, "+1XXXXXXXXXX"
   items: BasketItem[]
+  paymentStatus: 'pending' | 'paid' | 'failed'
+  paymentMethod: 'apple_pay' | 'google_pay' | 'card' | 'interac' | null
+  helcimTransactionId: string | null
 }
 
 export type BasketItem = {
@@ -22,7 +27,7 @@ export type BasketItem = {
 
 /** Initialise an empty session. */
 export function createSession(id: string): Session {
-  return { id, userCounter: 0, baskets: [] }
+  return { id, userCounter: 0, baskets: [], orderStatus: 'building', paymentDeadline: null }
 }
 
 /**

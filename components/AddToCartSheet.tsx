@@ -526,7 +526,7 @@ export default function AddToCartSheet({
                   {item!.name}
                 </p>
                 <p className="text-sm font-semibold mt-0.5 text-qraving-red">
-                  £{item!.price.toFixed(2)}
+                  ${item!.price.toFixed(2)} CAD
                 </p>
               </div>
             </div>

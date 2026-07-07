@@ -25,7 +25,7 @@ export interface MenuItem {
   name: string;
   description: string;
   imageUrl: string;
-  /** Mocked price in GBP (£8–£25), derived deterministically from idMeal */
+  /** Mocked price in CAD ($8–$25), derived deterministically from idMeal */
   price: number;
   dietaryTags: DietaryTag[];
   allergens: AllergenInfo[];
@@ -91,7 +91,7 @@ const ALL_ALLERGENS: AllergenInfo[] = [
 ];
 
 /**
- * Derives a price in the range £8–£25 from the meal ID.
+ * Derives a price in the range CAD $8–$25 from the meal ID.
  * Formula: 8 + (parseInt(idMeal) % 18)
  */
 function derivePrice(idMeal: string): number {
