@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sessionStore } from '@/lib/session-store'
+import { getSession, setSession } from '@/lib/session-firestore'
 import { computeBasketTotal, resolvePaymentMode, isPaymentDeadlineExpired } from '@/lib/payment'
 import { getMenu } from '@/lib/menu'
 import { isTestMode } from '@/lib/helcim'
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     paymentMode: 'wallet' | 'card' | 'interac'
   }
 
-  const session = sessionStore.get(sessionId)
+  const session = await getSession(sessionId)
 
   // 410 Gone when the split-payment deadline has passed
   if (isPaymentDeadlineExpired(session)) {
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
     updatedSession = { ...updatedSession, paymentDeadline: deadline }
   }
 
-  sessionStore.set(sessionId, updatedSession)
+  await setSession(sessionId, updatedSession)
 
   if (paymentMode === 'interac') {
     return NextResponse.json({ redirectUrl: helcimRedirectUrl })

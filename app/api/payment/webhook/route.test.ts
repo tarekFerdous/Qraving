@@ -1,9 +1,36 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createHmac } from 'node:crypto'
 import { NextRequest } from 'next/server'
 import { POST } from './route'
-import { sessionStore } from '@/lib/session-store'
 import type { Session, UserBasket, BasketItem } from '@/lib/session'
+import { createSession } from '@/lib/session'
+
+// ---------------------------------------------------------------------------
+// In-memory mock for session-firestore and firebase-admin (getMenu via adminDb)
+// ---------------------------------------------------------------------------
+
+const mockSessions = new Map<string, Session>()
+
+vi.mock('@/lib/session-firestore', () => ({
+  getSession: vi.fn().mockImplementation(async (id: string) =>
+    mockSessions.get(id) ?? createSession(id),
+  ),
+  setSession: vi.fn().mockImplementation(async (id: string, session: Session) => {
+    mockSessions.set(id, session)
+  }),
+}))
+
+vi.mock('@/lib/firebase-admin', () => ({
+  adminDb: {
+    collection: vi.fn().mockReturnValue({
+      orderBy: vi.fn().mockReturnValue({ get: vi.fn().mockResolvedValue({ docs: [] }) }),
+      get: vi.fn().mockResolvedValue({ docs: [] }),
+    }),
+  },
+}))
+
+// Stub fetch for the fire-and-forget SMS call
+vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -16,14 +43,7 @@ function sign(rawBody: string): string {
 }
 
 function makeItem(): BasketItem {
-  return {
-    itemId: 'item-1',
-    name: 'Burger',
-    size: 'Medium',
-    addOns: [],
-    instructions: '',
-    quantity: 1,
-  }
+  return { itemId: 'item-1', name: 'Burger', size: 'Medium', addOns: [], instructions: '', quantity: 1 }
 }
 
 function makeBasket(overrides: Partial<UserBasket> = {}): UserBasket {
@@ -40,14 +60,7 @@ function makeBasket(overrides: Partial<UserBasket> = {}): UserBasket {
 }
 
 function makeSession(overrides: Partial<Session> = {}): Session {
-  return {
-    id: 'sess-1',
-    userCounter: 0,
-    baskets: [],
-    orderStatus: 'payment_pending',
-    paymentDeadline: null,
-    ...overrides,
-  }
+  return { id: 'sess-1', userCounter: 0, baskets: [], orderStatus: 'payment_pending', paymentDeadline: null, ...overrides }
 }
 
 interface WebhookPayload {
@@ -58,16 +71,16 @@ interface WebhookPayload {
   paymentMethod: 'apple_pay' | 'google_pay' | 'card' | 'interac'
 }
 
+function seedSession(id: string, session: Session) { mockSessions.set(id, session) }
+function readSession(id: string): Session { return mockSessions.get(id) ?? createSession(id) }
+
 function makeRequest(payload: WebhookPayload, overrideSignature?: string): NextRequest {
   const rawBody = JSON.stringify(payload)
   const sig = overrideSignature ?? sign(rawBody)
   return new NextRequest('http://localhost/api/payment/webhook', {
     method: 'POST',
     body: rawBody,
-    headers: {
-      'Content-Type': 'application/json',
-      'helcim-signature': sig,
-    },
+    headers: { 'Content-Type': 'application/json', 'helcim-signature': sig },
   })
 }
 
@@ -77,146 +90,70 @@ function makeRequest(payload: WebhookPayload, overrideSignature?: string): NextR
 
 describe('POST /api/payment/webhook', () => {
   beforeEach(() => {
+    mockSessions.clear()
     process.env.HELCIM_WEBHOOK_SECRET = WEBHOOK_SECRET
   })
 
   it('returns 401 for an invalid HMAC signature', async () => {
-    const session = makeSession({
-      id: 'sess-webhook-401',
-      baskets: [makeBasket({ userId: 'user-1' })],
-    })
-    sessionStore.set('sess-webhook-401', session)
+    seedSession('sess-webhook-401', makeSession({ id: 'sess-webhook-401', baskets: [makeBasket({ userId: 'user-1' })] }))
 
-    const req = makeRequest(
-      {
-        sessionId: 'sess-webhook-401',
-        basketId: 'user-1',
-        transactionId: 'txn-1',
-        status: 'approved',
-        paymentMethod: 'card',
-      },
-      'bad-signature',
-    )
-    const res = await POST(req)
+    const res = await POST(makeRequest({ sessionId: 'sess-webhook-401', basketId: 'user-1', transactionId: 'txn-1', status: 'approved', paymentMethod: 'card' }, 'bad-signature'))
 
     expect(res.status).toBe(401)
   })
 
   it('marks basket paymentStatus as paid and stores helcimTransactionId on approved', async () => {
-    const session = makeSession({
-      id: 'sess-webhook-approved',
-      baskets: [makeBasket({ userId: 'user-1' })],
-    })
-    sessionStore.set('sess-webhook-approved', session)
+    seedSession('sess-webhook-approved', makeSession({ id: 'sess-webhook-approved', baskets: [makeBasket({ userId: 'user-1' })] }))
 
-    const req = makeRequest({
-      sessionId: 'sess-webhook-approved',
-      basketId: 'user-1',
-      transactionId: 'txn-approved-42',
-      status: 'approved',
-      paymentMethod: 'card',
-    })
-    const res = await POST(req)
+    const res = await POST(makeRequest({ sessionId: 'sess-webhook-approved', basketId: 'user-1', transactionId: 'txn-approved-42', status: 'approved', paymentMethod: 'card' }))
 
     expect(res.status).toBe(200)
 
-    const updatedSession = sessionStore.get('sess-webhook-approved')
-    const basket = updatedSession.baskets.find((b) => b.userId === 'user-1')!
+    const basket = readSession('sess-webhook-approved').baskets.find((b) => b.userId === 'user-1')!
     expect(basket.paymentStatus).toBe('paid')
     expect(basket.helcimTransactionId).toBe('txn-approved-42')
     expect(basket.paymentMethod).toBe('card')
   })
 
   it('marks basket paymentStatus as failed on declined payment', async () => {
-    const session = makeSession({
-      id: 'sess-webhook-declined',
-      baskets: [makeBasket({ userId: 'user-1' })],
-    })
-    sessionStore.set('sess-webhook-declined', session)
+    seedSession('sess-webhook-declined', makeSession({ id: 'sess-webhook-declined', baskets: [makeBasket({ userId: 'user-1' })] }))
 
-    const req = makeRequest({
-      sessionId: 'sess-webhook-declined',
-      basketId: 'user-1',
-      transactionId: 'txn-declined-7',
-      status: 'declined',
-      paymentMethod: 'card',
-    })
-    const res = await POST(req)
+    const res = await POST(makeRequest({ sessionId: 'sess-webhook-declined', basketId: 'user-1', transactionId: 'txn-declined-7', status: 'declined', paymentMethod: 'card' }))
 
     expect(res.status).toBe(200)
-
-    const updatedSession = sessionStore.get('sess-webhook-declined')
-    const basket = updatedSession.baskets.find((b) => b.userId === 'user-1')!
-    expect(basket.paymentStatus).toBe('failed')
+    expect(readSession('sess-webhook-declined').baskets.find((b) => b.userId === 'user-1')!.paymentStatus).toBe('failed')
   })
 
   it('sets orderStatus to submitted when all baskets are paid', async () => {
-    const session = makeSession({
+    seedSession('sess-webhook-all-paid', makeSession({
       id: 'sess-webhook-all-paid',
       orderStatus: 'payment_pending',
-      baskets: [
-        makeBasket({ userId: 'user-1', paymentStatus: 'paid' }),
-        makeBasket({ userId: 'user-2', paymentStatus: 'pending' }),
-      ],
-    })
-    sessionStore.set('sess-webhook-all-paid', session)
+      baskets: [makeBasket({ userId: 'user-1', paymentStatus: 'paid' }), makeBasket({ userId: 'user-2', paymentStatus: 'pending' })],
+    }))
 
-    const req = makeRequest({
-      sessionId: 'sess-webhook-all-paid',
-      basketId: 'user-2',
-      transactionId: 'txn-final',
-      status: 'approved',
-      paymentMethod: 'interac',
-    })
-    const res = await POST(req)
+    const res = await POST(makeRequest({ sessionId: 'sess-webhook-all-paid', basketId: 'user-2', transactionId: 'txn-final', status: 'approved', paymentMethod: 'interac' }))
 
     expect(res.status).toBe(200)
-
-    const updatedSession = sessionStore.get('sess-webhook-all-paid')
-    expect(updatedSession.orderStatus).toBe('submitted')
+    expect(readSession('sess-webhook-all-paid').orderStatus).toBe('submitted')
   })
 
   it('keeps orderStatus as payment_pending when only some baskets are paid', async () => {
-    const session = makeSession({
+    seedSession('sess-webhook-partial', makeSession({
       id: 'sess-webhook-partial',
       orderStatus: 'payment_pending',
-      baskets: [
-        makeBasket({ userId: 'user-1', paymentStatus: 'pending' }),
-        makeBasket({ userId: 'user-2', paymentStatus: 'pending' }),
-      ],
-    })
-    sessionStore.set('sess-webhook-partial', session)
+      baskets: [makeBasket({ userId: 'user-1', paymentStatus: 'pending' }), makeBasket({ userId: 'user-2', paymentStatus: 'pending' })],
+    }))
 
-    const req = makeRequest({
-      sessionId: 'sess-webhook-partial',
-      basketId: 'user-1',
-      transactionId: 'txn-partial',
-      status: 'approved',
-      paymentMethod: 'apple_pay',
-    })
-    const res = await POST(req)
+    const res = await POST(makeRequest({ sessionId: 'sess-webhook-partial', basketId: 'user-1', transactionId: 'txn-partial', status: 'approved', paymentMethod: 'apple_pay' }))
 
     expect(res.status).toBe(200)
-
-    const updatedSession = sessionStore.get('sess-webhook-partial')
-    expect(updatedSession.orderStatus).toBe('payment_pending')
+    expect(readSession('sess-webhook-partial').orderStatus).toBe('payment_pending')
   })
 
   it('returns 200 even for a declined payment (no retry loops)', async () => {
-    const session = makeSession({
-      id: 'sess-webhook-declined-200',
-      baskets: [makeBasket({ userId: 'user-1' })],
-    })
-    sessionStore.set('sess-webhook-declined-200', session)
+    seedSession('sess-webhook-declined-200', makeSession({ id: 'sess-webhook-declined-200', baskets: [makeBasket({ userId: 'user-1' })] }))
 
-    const req = makeRequest({
-      sessionId: 'sess-webhook-declined-200',
-      basketId: 'user-1',
-      transactionId: 'txn-declined-200',
-      status: 'declined',
-      paymentMethod: 'card',
-    })
-    const res = await POST(req)
+    const res = await POST(makeRequest({ sessionId: 'sess-webhook-declined-200', basketId: 'user-1', transactionId: 'txn-declined-200', status: 'declined', paymentMethod: 'card' }))
 
     expect(res.status).toBe(200)
   })

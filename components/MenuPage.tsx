@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MenuSection, MenuItem } from '@/lib/menu';
+import { db } from '@/lib/firebase-client';
+import { collection, onSnapshot } from 'firebase/firestore';
 import SectionNavigator from '@/components/SectionNavigator';
 import AddToCartSheet from '@/components/AddToCartSheet';
 import BasketsSheet from '@/components/BasketsSheet';
@@ -22,11 +24,32 @@ export default function MenuPage({ sections }: MenuPageProps) {
   const [awaitingTurn, setAwaitingTurn] = useState(false);
   const [finished, setFinished] = useState(false);
   const [checkoutBasket, setCheckoutBasket] = useState<UserBasket | null>(null);
-  const { session, updateSession } = useSession();
+  const [availabilityMap, setAvailabilityMap] = useState<Map<string, boolean>>(new Map());
+  const { session, updateSession, isExpired } = useSession();
   const basketCount = session.baskets.length;
 
+  useEffect(() => {
+    const ref = collection(db, 'companies/demo-company/branches/demo-branch/menuItems');
+    const unsub = onSnapshot(ref, (snap) => {
+      const map = new Map<string, boolean>();
+      for (const doc of snap.docs) {
+        map.set(doc.id, (doc.data() as { isAvailable: boolean }).isAvailable);
+      }
+      setAvailabilityMap(map);
+    });
+    return unsub;
+  }, []);
+
+  const displaySections = sections.map((s) => ({
+    ...s,
+    items: s.items.map((item) => ({
+      ...item,
+      isAvailable: item.isAvailable && (availabilityMap.get(item.id) ?? item.isAvailable),
+    })),
+  }));
+
   // Flatten all menu items for basket total computation in CheckoutSheet
-  const menuItems = sections.flatMap((s) => s.items);
+  const menuItems = displaySections.flatMap((s) => s.items);
 
   return (
     <div className="flex flex-col h-dvh lg:h-full overflow-hidden bg-qraving-bg">
@@ -74,7 +97,7 @@ export default function MenuPage({ sections }: MenuPageProps) {
           each section's content inside the navigator, so it snaps in with the
           category rather than living in a static band here. */}
       <div className="flex-1 overflow-hidden">
-        <SectionNavigator sections={sections} onAddToCart={setSelectedItem} />
+        <SectionNavigator sections={displaySections} onAddToCart={setSelectedItem} />
       </div>
 
       {/* Fixed overlays */}
@@ -138,6 +161,18 @@ export default function MenuPage({ sections }: MenuPageProps) {
           </h1>
           <p className="text-sm text-gray-500 text-center">
             Feel free to come back to this page or scan the QR code again.
+          </p>
+        </div>
+      )}
+
+      {/* Session expired — non-dismissable, blocks all cart interactions */}
+      {isExpired && (
+        <div className="fixed inset-0 z-70 bg-white flex flex-col items-center justify-center gap-4 px-8">
+          <h1 className="text-2xl font-bold text-gray-900 text-center">
+            Session expired
+          </h1>
+          <p className="text-sm text-gray-500 text-center">
+            Please rescan the QR code to start a new session.
           </p>
         </div>
       )}

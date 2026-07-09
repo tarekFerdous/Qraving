@@ -1,8 +1,32 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { POST } from './route'
-import { sessionStore } from '@/lib/session-store'
 import type { Session, UserBasket, BasketItem } from '@/lib/session'
+import { createSession } from '@/lib/session'
+
+// ---------------------------------------------------------------------------
+// In-memory mock for session-firestore and firebase-admin (getMenu via adminDb)
+// ---------------------------------------------------------------------------
+
+const mockSessions = new Map<string, Session>()
+
+vi.mock('@/lib/session-firestore', () => ({
+  getSession: vi.fn().mockImplementation(async (id: string) =>
+    mockSessions.get(id) ?? createSession(id),
+  ),
+  setSession: vi.fn().mockImplementation(async (id: string, session: Session) => {
+    mockSessions.set(id, session)
+  }),
+}))
+
+vi.mock('@/lib/firebase-admin', () => ({
+  adminDb: {
+    collection: vi.fn().mockReturnValue({
+      orderBy: vi.fn().mockReturnValue({ get: vi.fn().mockResolvedValue({ docs: [] }) }),
+      get: vi.fn().mockResolvedValue({ docs: [] }),
+    }),
+  },
+}))
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -44,6 +68,14 @@ function makeSession(overrides: Partial<Session> = {}): Session {
   }
 }
 
+function seedSession(id: string, session: Session) {
+  mockSessions.set(id, session)
+}
+
+function readSession(id: string): Session {
+  return mockSessions.get(id) ?? createSession(id)
+}
+
 function makeRequest(body: unknown): NextRequest {
   return new NextRequest('http://localhost/api/payment/initiate', {
     method: 'POST',
@@ -58,9 +90,8 @@ function makeRequest(body: unknown): NextRequest {
 
 describe('POST /api/payment/initiate', () => {
   beforeEach(() => {
-    // Stub global fetch to handle both TheMealDB calls (used by getMenu) and
-    // Helcim API calls. TheMealDB returns empty so computeBasketTotal uses
-    // price 0; Helcim mock returns a fixed token and redirectUrl.
+    mockSessions.clear()
+    process.env.HELCIM_API_KEY = 'test-api-key'
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation((url: string) => {
@@ -74,51 +105,38 @@ describe('POST /api/payment/initiate', () => {
               }),
           })
         }
-        // TheMealDB or any other call — return empty meals list
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ meals: [] }),
-        })
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ meals: [] }) })
       }),
     )
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    delete process.env.HELCIM_API_KEY
   })
 
   it('card mode returns { token } and sets orderStatus to payment_pending', async () => {
-    const session = makeSession({
+    seedSession('sess-initiate-card', makeSession({
       id: 'sess-initiate-card',
       baskets: [makeBasket({ userId: 'user-1' })],
-    })
-    sessionStore.set('sess-initiate-card', session)
+    }))
 
-    const req = makeRequest({
-      sessionId: 'sess-initiate-card',
-      basketId: 'user-1',
-      paymentMode: 'card',
-    })
+    const req = makeRequest({ sessionId: 'sess-initiate-card', basketId: 'user-1', paymentMode: 'card' })
     const res = await POST(req)
     const body = await res.json()
 
     expect(res.status).toBe(200)
     expect(body).toEqual({ token: 'test-token-abc' })
-    expect(sessionStore.get('sess-initiate-card').orderStatus).toBe('payment_pending')
+    expect(readSession('sess-initiate-card').orderStatus).toBe('payment_pending')
   })
 
   it('interac mode returns { redirectUrl }', async () => {
-    const session = makeSession({
+    seedSession('sess-initiate-interac', makeSession({
       id: 'sess-initiate-interac',
       baskets: [makeBasket({ userId: 'user-1' })],
-    })
-    sessionStore.set('sess-initiate-interac', session)
+    }))
 
-    const req = makeRequest({
-      sessionId: 'sess-initiate-interac',
-      basketId: 'user-1',
-      paymentMode: 'interac',
-    })
+    const req = makeRequest({ sessionId: 'sess-initiate-interac', basketId: 'user-1', paymentMode: 'interac' })
     const res = await POST(req)
     const body = await res.json()
 
@@ -127,27 +145,19 @@ describe('POST /api/payment/initiate', () => {
   })
 
   it('first split-session call stamps paymentDeadline approximately 30 minutes from now', async () => {
-    const session = makeSession({
+    seedSession('sess-initiate-split', makeSession({
       id: 'sess-initiate-split',
-      baskets: [
-        makeBasket({ userId: 'user-1' }),
-        makeBasket({ userId: 'user-2' }),
-      ],
-    })
-    sessionStore.set('sess-initiate-split', session)
+      baskets: [makeBasket({ userId: 'user-1' }), makeBasket({ userId: 'user-2' })],
+    }))
 
     const before = Date.now()
-    const req = makeRequest({
-      sessionId: 'sess-initiate-split',
-      basketId: 'user-1',
-      paymentMode: 'card',
-    })
+    const req = makeRequest({ sessionId: 'sess-initiate-split', basketId: 'user-1', paymentMode: 'card' })
     const res = await POST(req)
     const after = Date.now()
 
     expect(res.status).toBe(200)
 
-    const updatedSession = sessionStore.get('sess-initiate-split')
+    const updatedSession = readSession('sess-initiate-split')
     expect(updatedSession.paymentDeadline).not.toBeNull()
 
     const deadline = new Date(updatedSession.paymentDeadline!).getTime()
@@ -158,41 +168,27 @@ describe('POST /api/payment/initiate', () => {
 
   it('second split-session call does not overwrite an existing paymentDeadline', async () => {
     const existingDeadline = new Date(Date.now() + 25 * 60 * 1000).toISOString()
-    const session = makeSession({
+    seedSession('sess-initiate-split-no-overwrite', makeSession({
       id: 'sess-initiate-split-no-overwrite',
       orderStatus: 'payment_pending',
       paymentDeadline: existingDeadline,
-      baskets: [
-        makeBasket({ userId: 'user-1' }),
-        makeBasket({ userId: 'user-2' }),
-      ],
-    })
-    sessionStore.set('sess-initiate-split-no-overwrite', session)
+      baskets: [makeBasket({ userId: 'user-1' }), makeBasket({ userId: 'user-2' })],
+    }))
 
-    const req = makeRequest({
-      sessionId: 'sess-initiate-split-no-overwrite',
-      basketId: 'user-2',
-      paymentMode: 'card',
-    })
+    const req = makeRequest({ sessionId: 'sess-initiate-split-no-overwrite', basketId: 'user-2', paymentMode: 'card' })
     await POST(req)
 
-    const updatedSession = sessionStore.get('sess-initiate-split-no-overwrite')
-    expect(updatedSession.paymentDeadline).toBe(existingDeadline)
+    expect(readSession('sess-initiate-split-no-overwrite').paymentDeadline).toBe(existingDeadline)
   })
 
   it('returns 410 when the payment deadline has expired', async () => {
-    const session = makeSession({
+    seedSession('sess-initiate-expired', makeSession({
       id: 'sess-initiate-expired',
       baskets: [makeBasket({ userId: 'user-1' })],
-      paymentDeadline: new Date(Date.now() - 60_000).toISOString(), // 1 min in the past
-    })
-    sessionStore.set('sess-initiate-expired', session)
+      paymentDeadline: new Date(Date.now() - 60_000).toISOString(),
+    }))
 
-    const req = makeRequest({
-      sessionId: 'sess-initiate-expired',
-      basketId: 'user-1',
-      paymentMode: 'card',
-    })
+    const req = makeRequest({ sessionId: 'sess-initiate-expired', basketId: 'user-1', paymentMode: 'card' })
     const res = await POST(req)
 
     expect(res.status).toBe(410)
@@ -209,17 +205,12 @@ describe('POST /api/payment/initiate', () => {
       }),
     )
 
-    const session = makeSession({
+    seedSession('sess-initiate-helcim-error', makeSession({
       id: 'sess-initiate-helcim-error',
       baskets: [makeBasket({ userId: 'user-1' })],
-    })
-    sessionStore.set('sess-initiate-helcim-error', session)
+    }))
 
-    const req = makeRequest({
-      sessionId: 'sess-initiate-helcim-error',
-      basketId: 'user-1',
-      paymentMode: 'card',
-    })
+    const req = makeRequest({ sessionId: 'sess-initiate-helcim-error', basketId: 'user-1', paymentMode: 'card' })
     const res = await POST(req)
 
     expect(res.status).toBe(502)

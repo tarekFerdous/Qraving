@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:rules": "vitest run tests/firestore-rules.test.ts"
   },
   "repository": {
     "type": "git",
@@ -22,6 +23,8 @@
   },
   "homepage": "https://github.com/tarekFerdous/Qraving#readme",
   "dependencies": {
+    "firebase": "^10.0.0",
+    "firebase-admin": "^12.0.0",
     "lucide-react": "^1.21.0",
     "next": "^16.2.9",
     "react": "^19.2.7",
@@ -29,6 +32,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
+    "dotenv": "^16.0.0",
+    "ts-node": "^10.9.2",
     "@tailwindcss/postcss": "^4.3.1",
     "@types/node": "^26.0.1",
     "@types/react": "^19.2.17",
@@ -38,6 +43,7 @@
     "postcss": "^8.5.15",
     "tailwindcss": "^4.3.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "@firebase/rules-unit-testing": "^3.0.4"
   }
 }

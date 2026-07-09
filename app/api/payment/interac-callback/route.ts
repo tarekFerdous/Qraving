@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sessionStore } from '@/lib/session-store'
+import { getSession, setSession } from '@/lib/session-firestore'
 import { allBasketsPaid, computeBasketTotal } from '@/lib/payment'
 import { getMenu } from '@/lib/menu'
 import type { UserBasket } from '@/lib/session'
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   const sessionId = searchParams.get('sessionId') ?? ''
   const basketId = searchParams.get('basketId') ?? ''
 
-  const session = sessionStore.get(sessionId)
+  const session = await getSession(sessionId)
 
   const basketIndex = session.baskets.findIndex((b) => b.userId === basketId)
 
@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
     updatedSession = { ...updatedSession, orderStatus: 'submitted' }
   }
 
-  sessionStore.set(sessionId, updatedSession)
+  await setSession(sessionId, updatedSession)
 
   return NextResponse.redirect(
     new URL(`/${sessionId}?payment=${status === 'approved' ? 'success' : 'failed'}`, req.url),

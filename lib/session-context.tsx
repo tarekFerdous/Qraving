@@ -1,56 +1,108 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { Session, createSession } from '@/lib/session';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { doc, collection, onSnapshot, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase-client';
+import { Session, UserBasket, createSession } from '@/lib/session';
 
 const SESSION_ID = 'demo-table-1';
+const SESSION_DOC = 'companies/demo-company/branches/demo-branch/sessions/demo-table-1';
+const BASKETS_COL = `${SESSION_DOC}/baskets`;
 
 interface SessionContextValue {
   session: Session;
   updateSession: (s: Session) => void;
+  isExpired: boolean;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session>(() => createSession(SESSION_ID));
+  const [isExpired, setIsExpired] = useState(false);
+  const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load initial session from server on mount.
   useEffect(() => {
-    fetch(`/api/session/${SESSION_ID}`)
-      .then((r) => r.json())
-      .then((s: Session) => setSession(s))
-      .catch(() => {/* keep default */});
-  }, []);
+    const sessionRef = doc(db, SESSION_DOC);
+    const basketsRef = collection(db, BASKETS_COL);
 
-  // Subscribe to SSE stream — updates local state whenever another device
-  // (or the same device after a PATCH) pushes a new session.
-  useEffect(() => {
-    const es = new EventSource(`/api/session/${SESSION_ID}/stream`);
-    es.onmessage = (e) => {
-      try {
-        setSession(JSON.parse(e.data) as Session);
-      } catch {
-        // ignore malformed events
+    const unsubSession = onSnapshot(sessionRef, (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+
+      if (data.expiresAt instanceof Timestamp) {
+        const expiresAtMs = data.expiresAt.toMillis();
+        const msUntilExpiry = expiresAtMs - Date.now();
+        if (expiryTimer.current) clearTimeout(expiryTimer.current);
+        if (msUntilExpiry <= 0) {
+          setIsExpired(true);
+        } else {
+          expiryTimer.current = setTimeout(() => setIsExpired(true), msUntilExpiry);
+        }
       }
+
+      setSession((prev) => ({
+        ...prev,
+        userCounter: data.userCounter ?? prev.userCounter,
+        orderStatus: data.orderStatus ?? prev.orderStatus,
+        paymentDeadline:
+          data.paymentDeadline instanceof Timestamp
+            ? data.paymentDeadline.toDate().toISOString()
+            : (data.paymentDeadline as string | null) ?? null,
+      }));
+    });
+
+    const unsubBaskets = onSnapshot(basketsRef, (snap) => {
+      const baskets: UserBasket[] = snap.docs.map((d) => ({
+        userId: d.id,
+        ...(d.data() as Omit<UserBasket, 'userId'>),
+      }));
+      setSession((prev) => ({ ...prev, baskets }));
+    });
+
+    return () => {
+      unsubSession();
+      unsubBaskets();
+      if (expiryTimer.current) clearTimeout(expiryTimer.current);
     };
-    return () => es.close();
   }, []);
 
-  // Optimistic local update + PATCH to the server. The SSE stream will
-  // echo the update back — `setSession` calls are idempotent so the
-  // second no-op write from the stream is harmless.
   const updateSession = useCallback((s: Session) => {
     setSession(s);
-    fetch(`/api/session/${SESSION_ID}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session: s }),
-    }).catch(() => {/* optimistic update already applied */});
+    const sessionRef = doc(db, SESSION_DOC);
+
+    setDoc(
+      sessionRef,
+      {
+        orderStatus: s.orderStatus,
+        paymentDeadline: s.paymentDeadline
+          ? Timestamp.fromDate(new Date(s.paymentDeadline))
+          : null,
+        userCounter: s.userCounter,
+      },
+      { merge: true },
+    ).catch(() => {});
+
+    for (const basket of s.baskets) {
+      const { userId, ...data } = basket;
+      setDoc(doc(db, BASKETS_COL, userId), data).catch(() => {});
+    }
+
+    if (s.baskets.length > 0) {
+      // refresh activity window whenever baskets are written
+      setDoc(
+        sessionRef,
+        {
+          lastActivity: serverTimestamp(),
+          expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 60 * 1000)),
+        },
+        { merge: true },
+      ).catch(() => {});
+    }
   }, []);
 
   return (
-    <SessionContext.Provider value={{ session, updateSession }}>
+    <SessionContext.Provider value={{ session, updateSession, isExpired }}>
       {children}
     </SessionContext.Provider>
   );

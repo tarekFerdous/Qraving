@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac } from 'node:crypto'
-import { sessionStore } from '@/lib/session-store'
+import { getSession, setSession } from '@/lib/session-firestore'
 import { allBasketsPaid, computeBasketTotal } from '@/lib/payment'
 import { getMenu } from '@/lib/menu'
 import type { UserBasket } from '@/lib/session'
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
   const payload = JSON.parse(rawBody) as WebhookPayload
   const { sessionId, basketId, transactionId, status, paymentMethod } = payload
 
-  const session = sessionStore.get(sessionId)
+  const session = await getSession(sessionId)
 
   const basketIndex = session.baskets.findIndex((b) => b.userId === basketId)
   if (basketIndex === -1) {
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     updatedSession = { ...updatedSession, orderStatus: 'submitted' }
   }
 
-  sessionStore.set(sessionId, updatedSession)
+  await setSession(sessionId, updatedSession)
 
   // Always 200 — Helcim will retry on non-2xx; we must not cause retries for
   // expected business events like declines.

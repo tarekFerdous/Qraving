@@ -19,7 +19,7 @@ export type UserBasket = {
 export type BasketItem = {
   itemId: string
   name: string
-  size: 'Small' | 'Medium' | 'Large'
+  size: string
   addOns: string[]
   instructions: string
   quantity: number

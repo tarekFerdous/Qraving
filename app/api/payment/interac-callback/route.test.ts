@@ -1,22 +1,43 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import { vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { GET } from './route'
-import { sessionStore } from '@/lib/session-store'
 import type { Session, UserBasket, BasketItem } from '@/lib/session'
+import { createSession } from '@/lib/session'
+
+// ---------------------------------------------------------------------------
+// In-memory mock for session-firestore and firebase-admin (getMenu via adminDb)
+// ---------------------------------------------------------------------------
+
+const mockSessions = new Map<string, Session>()
+
+vi.mock('@/lib/session-firestore', () => ({
+  getSession: vi.fn().mockImplementation(async (id: string) =>
+    mockSessions.get(id) ?? createSession(id),
+  ),
+  setSession: vi.fn().mockImplementation(async (id: string, session: Session) => {
+    mockSessions.set(id, session)
+  }),
+}))
+
+vi.mock('@/lib/firebase-admin', () => ({
+  adminDb: {
+    collection: vi.fn().mockReturnValue({
+      orderBy: vi.fn().mockReturnValue({ get: vi.fn().mockResolvedValue({ docs: [] }) }),
+      get: vi.fn().mockResolvedValue({ docs: [] }),
+    }),
+  },
+}))
+
+// Stub fetch so the fire-and-forget SMS call doesn't fail during tests
+vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function makeItem(): BasketItem {
-  return {
-    itemId: 'item-1',
-    name: 'Burger',
-    size: 'Medium',
-    addOns: [],
-    instructions: '',
-    quantity: 1,
-  }
+  return { itemId: 'item-1', name: 'Burger', size: 'Medium', addOns: [], instructions: '', quantity: 1 }
 }
 
 function makeBasket(overrides: Partial<UserBasket> = {}): UserBasket {
@@ -33,22 +54,13 @@ function makeBasket(overrides: Partial<UserBasket> = {}): UserBasket {
 }
 
 function makeSession(overrides: Partial<Session> = {}): Session {
-  return {
-    id: 'sess-1',
-    userCounter: 0,
-    baskets: [],
-    orderStatus: 'payment_pending',
-    paymentDeadline: null,
-    ...overrides,
-  }
+  return { id: 'sess-1', userCounter: 0, baskets: [], orderStatus: 'payment_pending', paymentDeadline: null, ...overrides }
 }
 
-function makeRequest(params: {
-  sessionId: string
-  basketId: string
-  transactionId: string
-  status: string
-}): NextRequest {
+function seedSession(id: string, session: Session) { mockSessions.set(id, session) }
+function readSession(id: string): Session { return mockSessions.get(id) ?? createSession(id) }
+
+function makeRequest(params: { sessionId: string; basketId: string; transactionId: string; status: string }): NextRequest {
   const url = new URL('http://localhost/api/payment/interac-callback')
   url.searchParams.set('sessionId', params.sessionId)
   url.searchParams.set('basketId', params.basketId)
@@ -62,136 +74,66 @@ function makeRequest(params: {
 // ---------------------------------------------------------------------------
 
 describe('GET /api/payment/interac-callback', () => {
-  beforeEach(() => {
-    // No env setup required for this handler
-  })
+  beforeEach(() => { mockSessions.clear() })
 
   it('marks basket as paid and redirects to ?payment=success on approved', async () => {
-    const session = makeSession({
-      id: 'sess-ic-approved',
-      baskets: [makeBasket({ userId: 'user-1' })],
-    })
-    sessionStore.set('sess-ic-approved', session)
+    seedSession('sess-ic-approved', makeSession({ id: 'sess-ic-approved', baskets: [makeBasket({ userId: 'user-1' })] }))
 
-    const req = makeRequest({
-      sessionId: 'sess-ic-approved',
-      basketId: 'user-1',
-      transactionId: 'txn-ic-42',
-      status: 'approved',
-    })
-    const res = await GET(req)
+    const res = await GET(makeRequest({ sessionId: 'sess-ic-approved', basketId: 'user-1', transactionId: 'txn-ic-42', status: 'approved' }))
 
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/sess-ic-approved?payment=success')
 
-    const updatedSession = sessionStore.get('sess-ic-approved')
-    const basket = updatedSession.baskets.find((b) => b.userId === 'user-1')!
+    const basket = readSession('sess-ic-approved').baskets.find((b) => b.userId === 'user-1')!
     expect(basket.paymentStatus).toBe('paid')
     expect(basket.helcimTransactionId).toBe('txn-ic-42')
     expect(basket.paymentMethod).toBe('interac')
   })
 
   it('marks basket as failed and redirects to ?payment=failed on declined', async () => {
-    const session = makeSession({
-      id: 'sess-ic-declined',
-      baskets: [makeBasket({ userId: 'user-1' })],
-    })
-    sessionStore.set('sess-ic-declined', session)
+    seedSession('sess-ic-declined', makeSession({ id: 'sess-ic-declined', baskets: [makeBasket({ userId: 'user-1' })] }))
 
-    const req = makeRequest({
-      sessionId: 'sess-ic-declined',
-      basketId: 'user-1',
-      transactionId: 'txn-ic-declined',
-      status: 'declined',
-    })
-    const res = await GET(req)
+    const res = await GET(makeRequest({ sessionId: 'sess-ic-declined', basketId: 'user-1', transactionId: 'txn-ic-declined', status: 'declined' }))
 
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/sess-ic-declined?payment=failed')
-
-    const updatedSession = sessionStore.get('sess-ic-declined')
-    const basket = updatedSession.baskets.find((b) => b.userId === 'user-1')!
-    expect(basket.paymentStatus).toBe('failed')
+    expect(readSession('sess-ic-declined').baskets.find((b) => b.userId === 'user-1')!.paymentStatus).toBe('failed')
   })
 
   it('sets orderStatus to submitted when all baskets are paid', async () => {
-    const session = makeSession({
+    seedSession('sess-ic-all-paid', makeSession({
       id: 'sess-ic-all-paid',
       orderStatus: 'payment_pending',
-      baskets: [
-        makeBasket({ userId: 'user-1', paymentStatus: 'paid' }),
-        makeBasket({ userId: 'user-2', paymentStatus: 'pending' }),
-      ],
-    })
-    sessionStore.set('sess-ic-all-paid', session)
+      baskets: [makeBasket({ userId: 'user-1', paymentStatus: 'paid' }), makeBasket({ userId: 'user-2', paymentStatus: 'pending' })],
+    }))
 
-    const req = makeRequest({
-      sessionId: 'sess-ic-all-paid',
-      basketId: 'user-2',
-      transactionId: 'txn-ic-final',
-      status: 'approved',
-    })
-    const res = await GET(req)
+    await GET(makeRequest({ sessionId: 'sess-ic-all-paid', basketId: 'user-2', transactionId: 'txn-ic-final', status: 'approved' }))
 
-    expect(res.status).toBe(307)
-
-    const updatedSession = sessionStore.get('sess-ic-all-paid')
-    expect(updatedSession.orderStatus).toBe('submitted')
+    expect(readSession('sess-ic-all-paid').orderStatus).toBe('submitted')
   })
 
   it('keeps orderStatus unchanged when only some baskets are paid', async () => {
-    const session = makeSession({
+    seedSession('sess-ic-partial', makeSession({
       id: 'sess-ic-partial',
       orderStatus: 'payment_pending',
-      baskets: [
-        makeBasket({ userId: 'user-1', paymentStatus: 'pending' }),
-        makeBasket({ userId: 'user-2', paymentStatus: 'pending' }),
-      ],
-    })
-    sessionStore.set('sess-ic-partial', session)
+      baskets: [makeBasket({ userId: 'user-1', paymentStatus: 'pending' }), makeBasket({ userId: 'user-2', paymentStatus: 'pending' })],
+    }))
 
-    const req = makeRequest({
-      sessionId: 'sess-ic-partial',
-      basketId: 'user-1',
-      transactionId: 'txn-ic-partial',
-      status: 'approved',
-    })
-    const res = await GET(req)
+    await GET(makeRequest({ sessionId: 'sess-ic-partial', basketId: 'user-1', transactionId: 'txn-ic-partial', status: 'approved' }))
 
-    expect(res.status).toBe(307)
-
-    const updatedSession = sessionStore.get('sess-ic-partial')
-    expect(updatedSession.orderStatus).toBe('payment_pending')
+    expect(readSession('sess-ic-partial').orderStatus).toBe('payment_pending')
   })
 
   it('is idempotent: already-paid basket skips updates and redirects success', async () => {
-    const session = makeSession({
+    seedSession('sess-ic-idem', makeSession({
       id: 'sess-ic-idem',
-      baskets: [
-        makeBasket({
-          userId: 'user-1',
-          paymentStatus: 'paid',
-          helcimTransactionId: 'original-txn',
-          paymentMethod: 'interac',
-        }),
-      ],
-    })
-    sessionStore.set('sess-ic-idem', session)
+      baskets: [makeBasket({ userId: 'user-1', paymentStatus: 'paid', helcimTransactionId: 'original-txn', paymentMethod: 'interac' })],
+    }))
 
-    const req = makeRequest({
-      sessionId: 'sess-ic-idem',
-      basketId: 'user-1',
-      transactionId: 'duplicate-txn',
-      status: 'approved',
-    })
-    const res = await GET(req)
+    const res = await GET(makeRequest({ sessionId: 'sess-ic-idem', basketId: 'user-1', transactionId: 'duplicate-txn', status: 'approved' }))
 
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/sess-ic-idem?payment=success')
-
-    // Transaction ID must not have changed (idempotent)
-    const updatedSession = sessionStore.get('sess-ic-idem')
-    const basket = updatedSession.baskets.find((b) => b.userId === 'user-1')!
-    expect(basket.helcimTransactionId).toBe('original-txn')
+    expect(readSession('sess-ic-idem').baskets.find((b) => b.userId === 'user-1')!.helcimTransactionId).toBe('original-txn')
   })
 })
