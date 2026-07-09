@@ -1,0 +1,154 @@
+import { adminDb } from '@/lib/firebase-admin';
+import { Timestamp } from 'firebase-admin/firestore';
+import { randomBytes } from 'crypto';
+
+export interface LayerConfig {
+  index: number;
+  label: string;
+}
+
+export interface Company {
+  id: string;
+  name: string;
+  slug: string;
+  layers: LayerConfig[];
+  createdAt: Timestamp;
+}
+
+export interface CompanyNode {
+  id: string;
+  parentId: string | null;
+  label: string;
+  slug: string;
+  depth: number;
+  isLeaf: boolean;
+  qrCode: string | null;
+  fullPath: string | null;
+  active: boolean;
+  createdAt: Timestamp;
+}
+
+export function generateSlug(displayName: string, suffix?: string): string {
+  const base = displayName
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return suffix ? `${base}-${suffix}` : base;
+}
+
+export async function ensureUniqueSlug(candidateSlug: string): Promise<string> {
+  const snap = await adminDb.collection('companies').where('slug', '==', candidateSlug).limit(1).get();
+  if (snap.empty) return candidateSlug;
+  const snap2 = await adminDb.collection('companies').where('slug', '==', `${candidateSlug}-2`).limit(1).get();
+  if (snap2.empty) return `${candidateSlug}-2`;
+  return `${candidateSlug}-${Date.now()}`;
+}
+
+export async function createCompany(data: { name: string; slug: string; layers: LayerConfig[] }): Promise<string> {
+  const ref = adminDb.collection('companies').doc();
+  await ref.set({
+    name: data.name,
+    slug: data.slug,
+    layers: data.layers,
+    createdAt: Timestamp.now(),
+  });
+  return ref.id;
+}
+
+export async function getCompany(companyId: string): Promise<Company | null> {
+  const snap = await adminDb.doc(`companies/${companyId}`).get();
+  if (!snap.exists) return null;
+  return { id: snap.id, ...(snap.data() as Omit<Company, 'id'>) };
+}
+
+export async function getAllCompanies(): Promise<Company[]> {
+  const snap = await adminDb.collection('companies').orderBy('createdAt', 'desc').get();
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Company, 'id'>) }));
+}
+
+export async function getNodes(companyId: string): Promise<CompanyNode[]> {
+  const snap = await adminDb
+    .collection(`companies/${companyId}/nodes`)
+    .where('active', '==', true)
+    .orderBy('depth', 'asc')
+    .get();
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CompanyNode, 'id'>) }));
+}
+
+export async function buildFullPath(companyId: string, nodeId: string): Promise<string> {
+  const company = await getCompany(companyId);
+  if (!company) throw new Error('Company not found');
+
+  const chain: string[] = [];
+  let currentId: string | null = nodeId;
+
+  while (currentId) {
+    const snap = await adminDb.doc(`companies/${companyId}/nodes/${currentId}`).get();
+    if (!snap.exists) break;
+    const data = snap.data() as CompanyNode;
+    chain.unshift(data.slug);
+    currentId = data.parentId;
+  }
+
+  return `/${company.slug}/${chain.join('/')}`;
+}
+
+export async function createNode(
+  companyId: string,
+  data: { parentId: string | null; label: string; depth: number; isLeaf: boolean },
+): Promise<string> {
+  const slug = generateSlug(data.label);
+  const ref = adminDb.collection(`companies/${companyId}/nodes`).doc();
+
+  const batch = adminDb.batch();
+  batch.set(ref, {
+    parentId: data.parentId,
+    label: data.label,
+    slug,
+    depth: data.depth,
+    isLeaf: data.isLeaf,
+    qrCode: null,
+    fullPath: null,
+    active: true,
+    createdAt: Timestamp.now(),
+  });
+
+  // When adding a child to a parent, mark parent as non-leaf
+  if (data.parentId) {
+    batch.update(adminDb.doc(`companies/${companyId}/nodes/${data.parentId}`), { isLeaf: false });
+  }
+
+  await batch.commit();
+  return ref.id;
+}
+
+export async function generateQRCode(companyId: string, nodeId: string): Promise<string> {
+  const code = randomBytes(6).toString('base64url').slice(0, 8).toUpperCase();
+  const fullPath = await buildFullPath(companyId, nodeId);
+  const fullPathWithCode = `${fullPath}/${code}`;
+
+  await adminDb.doc(`companies/${companyId}/nodes/${nodeId}`).update({
+    qrCode: code,
+    fullPath: fullPathWithCode,
+  });
+
+  return fullPathWithCode;
+}
+
+export async function deactivateNode(companyId: string, nodeId: string): Promise<void> {
+  await adminDb.doc(`companies/${companyId}/nodes/${nodeId}`).update({ active: false });
+}
+
+export async function getBranchNodes(companyId: string): Promise<CompanyNode[]> {
+  const snap = await adminDb
+    .collection(`companies/${companyId}/nodes`)
+    .where('depth', '==', 0)
+    .where('active', '==', true)
+    .get();
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CompanyNode, 'id'>) }));
+}

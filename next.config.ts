@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: 'www.themealdb.com',
+        hostname: 'upload.wikimedia.org',
       },
     ],
   },

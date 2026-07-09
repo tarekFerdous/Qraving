@@ -1,18 +1,58 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /companies/{companyId}/branches/{branchId}/categories/{categoryId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+
+    function isSuperadmin() {
+      return request.auth != null && request.auth.token.role == 'superadmin';
     }
-    match /companies/{companyId}/branches/{branchId}/menuItems/{itemId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+
+    function isManagerFor(companyId) {
+      return request.auth != null
+        && request.auth.token.role == 'manager'
+        && request.auth.token.companyId == companyId;
     }
-    match /companies/{companyId}/branches/{branchId}/sessions/{sessionId} {
-      allow read, write: if true;
-      match /baskets/{userId} {
-        allow read, write: if true;
+
+    // Users collection — only superadmin or the user themselves can read; only server can write
+    match /users/{uid} {
+      allow read: if request.auth != null && (request.auth.uid == uid || isSuperadmin());
+      allow write: if false; // written only via Admin SDK (API routes)
+    }
+
+    // Companies — superadmin writes; anyone reads
+    match /companies/{companyId} {
+      allow read: if true;
+      allow write: if isSuperadmin();
+
+      match /nodes/{nodeId} {
+        allow read: if true;
+        allow write: if isSuperadmin();
+      }
+
+      match /branches/{branchId} {
+        allow read: if true;
+        allow write: if isSuperadmin() || isManagerFor(companyId);
+
+        match /categories/{categoryId} {
+          allow read: if true;
+          allow write: if isSuperadmin() || isManagerFor(companyId);
+        }
+
+        match /menuItems/{itemId} {
+          allow read: if true;
+          allow write: if isSuperadmin() || isManagerFor(companyId);
+        }
+
+        match /menu/{docId} {
+          allow read: if true;
+          allow write: if isSuperadmin() || isManagerFor(companyId);
+        }
+
+        match /sessions/{sessionId} {
+          allow read, write: if true;
+          match /baskets/{userId} {
+            allow read, write: if true;
+          }
+        }
       }
     }
   }
