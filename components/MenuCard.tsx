@@ -175,8 +175,8 @@ function MenuCard({
                     if (item.isAvailable) onAddToCart(item);
                   }}
                   disabled={!item.isAvailable}
-                  className={`flex-1 py-2 rounded-xl text-white text-sm font-semibold transition-opacity active:opacity-80 flex items-center justify-center gap-1 ${
-                    item.isAvailable ? 'bg-qraving-button' : 'cursor-not-allowed'
+                  className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-opacity active:opacity-80 flex items-center justify-center gap-1 ${
+                    item.isAvailable ? 'bg-qraving-button text-qraving-text' : 'cursor-not-allowed text-white'
                   }`}
                   style={
                     item.isAvailable
@@ -342,10 +342,10 @@ function MenuCard({
                 }
               }}
               disabled={!item.isAvailable}
-              className={`w-full py-2.5 rounded-xl text-white text-sm font-semibold mt-1 ${
+              className={`w-full py-2.5 rounded-xl text-sm font-semibold mt-1 ${
                 item.isAvailable
-                  ? 'bg-qraving-button opacity-100'
-                  : 'bg-gray-400 opacity-70 cursor-not-allowed'
+                  ? 'bg-qraving-button text-qraving-text opacity-100'
+                  : 'bg-gray-400 text-white opacity-70 cursor-not-allowed'
               }`}
             >
               {item.isAvailable ? 'Add to Cart' : 'Unavailable'}
