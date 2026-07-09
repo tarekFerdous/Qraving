@@ -174,7 +174,7 @@ export default function BasketsSheet({ open, onClose, onModify, onProceedToPayme
                               e.stopPropagation();
                               onProceedToPayment(basket);
                             }}
-                            className="text-xs font-semibold text-white bg-qraving-red px-3 py-1 rounded-full"
+                            className="text-xs font-semibold text-qraving-text bg-qraving-button px-3 py-1 rounded-full"
                           >
                             Pay
                           </button>

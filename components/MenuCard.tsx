@@ -55,7 +55,7 @@ function MenuCard({
     <div className="h-full w-full px-0" style={{ perspective: '1000px' }}>
       {/* Card container — rotates on Y axis */}
       <div
-        className="relative h-full w-full rounded-3xl border border-qraving-card-border"
+        className="relative h-full w-full rounded-3xl"
         style={{
           transformStyle: 'preserve-3d',
           transition: 'transform 450ms cubic-bezier(0.4, 0, 0.2, 1)',

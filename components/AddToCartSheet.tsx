@@ -287,7 +287,7 @@ export default function AddToCartSheet({
     const name = identityName.trim() || label;
 
     // Build basket, add staged item, attach to session
-    const emptyBasket: UserBasket = { userId, name, phone, items: [] };
+    const emptyBasket: UserBasket = { userId, name, phone, items: [], paymentStatus: 'pending', paymentMethod: null, helcimTransactionId: null };
     const basketWithItem = upsertItem(emptyBasket, stagedItem.current);
     const finalSession = addBasket(sessionV2, basketWithItem);
 
@@ -501,7 +501,7 @@ export default function AddToCartSheet({
               <button
                 type="button"
                 onClick={handleEditDone}
-                className="w-full py-3 rounded-xl text-white text-base font-bold transition-opacity active:opacity-80 bg-qraving-red"
+                className="w-full py-3 rounded-xl text-qraving-text text-base font-bold transition-opacity active:opacity-80 bg-qraving-button"
               >
                 Done
               </button>
@@ -603,7 +603,7 @@ export default function AddToCartSheet({
                 type="button"
                 onClick={handleAddToBasket}
                 aria-label={`Add ${item!.name} to basket`}
-                className="w-full py-3 rounded-xl text-white text-base font-bold transition-opacity active:opacity-80 bg-qraving-red"
+                className="w-full py-3 rounded-xl text-qraving-text text-base font-bold transition-opacity active:opacity-80 bg-qraving-button"
               >
                 Add to basket
               </button>
@@ -697,7 +697,7 @@ export default function AddToCartSheet({
               onClick={handleCommitWithIdentity}
               disabled={!phoneComplete}
               aria-label="Add to basket"
-              className="w-full py-3 rounded-xl text-white text-base font-bold transition-opacity active:opacity-80 bg-qraving-red disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full py-3 rounded-xl text-qraving-text text-base font-bold transition-opacity active:opacity-80 bg-qraving-button disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Add to basket
             </button>
@@ -708,7 +708,7 @@ export default function AddToCartSheet({
             <button
               type="button"
               onClick={handleAddMore}
-              className="w-full py-3 rounded-xl text-white text-base font-bold transition-opacity active:opacity-80 bg-qraving-red"
+              className="w-full py-3 rounded-xl text-qraving-text text-base font-bold transition-opacity active:opacity-80 bg-qraving-button"
             >
               Add more
             </button>

@@ -13,6 +13,7 @@ interface SessionContextValue {
   session: Session;
   updateSession: (s: Session) => void;
   isExpired: boolean;
+  resetSession: () => void;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -67,6 +68,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const resetSession = useCallback(() => {
+    if (expiryTimer.current) clearTimeout(expiryTimer.current);
+    setIsExpired(false);
+    const fresh = createSession(SESSION_ID);
+    setSession(fresh);
+    const sessionRef = doc(db, SESSION_DOC);
+    setDoc(
+      sessionRef,
+      {
+        userCounter: 0,
+        orderStatus: 'pending',
+        paymentDeadline: null,
+        lastActivity: serverTimestamp(),
+        expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 60 * 1000)),
+      },
+      { merge: true },
+    ).catch(() => {});
+  }, []);
+
   const updateSession = useCallback((s: Session) => {
     setSession(s);
     const sessionRef = doc(db, SESSION_DOC);
@@ -102,7 +122,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <SessionContext.Provider value={{ session, updateSession, isExpired }}>
+    <SessionContext.Provider value={{ session, updateSession, isExpired, resetSession }}>
       {children}
     </SessionContext.Provider>
   );

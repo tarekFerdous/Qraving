@@ -333,9 +333,11 @@ export default function SectionNavigator({
               {/* Live category name — folded into the section so it snaps in
                   with the content on a vertical swipe. */}
               <div className="px-4 pt-3 pb-2 shrink-0">
-                <p className="text-qraving-text font-semibold text-base">
-                  {section.name}
-                </p>
+                <div data-testid="category-pill" className="w-full bg-qraving-button rounded-xl py-2 px-4 text-center">
+                  <span className="font-semibold text-base text-qraving-text">
+                    {section.name}
+                  </span>
+                </div>
               </div>
 
               {/* Cards fill the remaining height (taller cards, same width).
@@ -366,12 +368,13 @@ export default function SectionNavigator({
       {/* Next-category preview strip — fixed 10vh. Tapping advances to the next
           category (same as a vertical swipe up); on the last category it returns
           to the first. */}
+      <div className="pt-2 shrink-0">
       {preview.kind === 'next' ? (
         <button
           type="button"
           onClick={() => goToSection(preview.index)}
           aria-label={`Next category: ${preview.name}`}
-          className="h-[10vh] shrink-0 w-full flex items-center gap-3 px-4 text-left bg-qraving-card-border/40 active:opacity-80"
+          className="h-[10vh] w-full flex items-center gap-3 px-4 text-left bg-gray-100 active:opacity-80"
         >
           <div className="flex flex-col shrink-0 max-w-[42vw]">
             <span className="text-[10px] uppercase tracking-wider text-qraving-text/50 font-semibold">
@@ -382,7 +385,7 @@ export default function SectionNavigator({
             </span>
           </div>
           <div className="flex-1 flex items-center gap-2 overflow-hidden h-[7vh]">
-            {sections[preview.index].items.slice(0, 6).map((it) => (
+            {sections[preview.index].items.slice(0, 6).filter((it) => it.imageUrl).map((it) => (
               <div
                 key={it.id}
                 className="relative h-full aspect-[0.76] shrink-0 rounded-lg overflow-hidden border border-qraving-card-border"
@@ -391,8 +394,8 @@ export default function SectionNavigator({
                   src={it.imageUrl}
                   alt=""
                   fill
+                  unoptimized
                   className="object-cover"
-                  sizes="80px"
                 />
               </div>
             ))}
@@ -404,12 +407,13 @@ export default function SectionNavigator({
           type="button"
           onClick={() => goToSection(0)}
           aria-label="Back to top"
-          className="h-[10vh] shrink-0 w-full flex items-center justify-center gap-2 bg-qraving-card-border/40 text-qraving-text font-semibold text-sm active:opacity-80"
+          className="h-[10vh] w-full flex items-center justify-center gap-2 bg-gray-100 text-qraving-text font-semibold text-sm active:opacity-80"
         >
           <ChevronUp size={18} />
           Back to top
         </button>
       )}
+      </div>
     </div>
   );
 }

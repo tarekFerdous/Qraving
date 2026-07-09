@@ -52,7 +52,7 @@ test.describe('/demo-table smoke test', () => {
     expect(c).toEqual({ r: 255, g: 255, b: 255 });
   });
 
-  test('"Up Next" strip background is warm yellow (not lime green)', async ({ page }) => {
+  test('category pill has warm yellow background (not lime green)', async ({ page }) => {
     const c = await page.evaluate(() => {
       function canvasRgb(css: string) {
         const cvs = document.createElement('canvas');
@@ -65,7 +65,7 @@ test.describe('/demo-table smoke test', () => {
         const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
         return { r, g, b };
       }
-      const el = document.querySelector<HTMLElement>('[aria-label^="Next category"]');
+      const el = document.querySelector<HTMLElement>('[data-testid="category-pill"]');
       if (!el) return null;
       return canvasRgb(getComputedStyle(el).backgroundColor);
     });
@@ -124,5 +124,35 @@ test.describe('/demo-table smoke test', () => {
     // Dark text: perceived luminance well below the midpoint (128)
     const luma = c!.r * 0.299 + c!.g * 0.587 + c!.b * 0.114;
     expect(luma).toBeLessThan(128);
+  });
+
+  test('"Up Next" strip shows at least two thumbnail images with non-zero naturalWidth', async ({ page }) => {
+    // Intercept external image requests so headless Chromium (which is blocked by
+    // Wikipedia's CDN and similar hosts) still gets a valid image response, making
+    // naturalWidth > 0 deterministic without depending on external network access.
+    // Route must be set before navigation so it catches the initial image requests.
+    const oneByOnePng = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    await page.route(/themealdb\.com|firebasestorage\.googleapis\.com|storage\.googleapis\.com/, async (route) => {
+      await route.fulfill({ status: 200, contentType: 'image/png', body: oneByOnePng });
+    });
+    // Reload so images are re-requested with the intercept active.
+    await page.reload();
+    await page.waitForSelector('button:has-text("Add")', { timeout: 15000 });
+
+    // Wait for the Up Next strip to appear
+    const strip = page.locator('[aria-label^="Next category"]');
+    await expect(strip).toBeVisible({ timeout: 15000 });
+
+    // Give images inside the strip time to load
+    const thumbnails = strip.locator('img');
+    await expect(thumbnails.first()).toBeVisible({ timeout: 10000 });
+
+    const loadedCount = await thumbnails.evaluateAll((imgs: HTMLImageElement[]) =>
+      imgs.filter((img) => img.naturalWidth > 0).length
+    );
+    expect(loadedCount).toBeGreaterThanOrEqual(2);
   });
 });

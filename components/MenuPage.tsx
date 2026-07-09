@@ -25,7 +25,7 @@ export default function MenuPage({ sections }: MenuPageProps) {
   const [finished, setFinished] = useState(false);
   const [checkoutBasket, setCheckoutBasket] = useState<UserBasket | null>(null);
   const [availabilityMap, setAvailabilityMap] = useState<Map<string, boolean>>(new Map());
-  const { session, updateSession, isExpired } = useSession();
+  const { session, updateSession, isExpired, resetSession } = useSession();
   const basketCount = session.baskets.length;
 
   useEffect(() => {
@@ -165,7 +165,7 @@ export default function MenuPage({ sections }: MenuPageProps) {
         </div>
       )}
 
-      {/* Session expired — non-dismissable, blocks all cart interactions */}
+      {/* Session expired */}
       {isExpired && (
         <div className="fixed inset-0 z-70 bg-white flex flex-col items-center justify-center gap-4 px-8">
           <h1 className="text-2xl font-bold text-gray-900 text-center">
@@ -174,6 +174,13 @@ export default function MenuPage({ sections }: MenuPageProps) {
           <p className="text-sm text-gray-500 text-center">
             Please rescan the QR code to start a new session.
           </p>
+          <button
+            type="button"
+            onClick={resetSession}
+            className="mt-2 px-8 py-3 rounded-xl bg-qraving-button text-qraving-text text-base font-bold transition-opacity active:opacity-80"
+          >
+            Reset session
+          </button>
         </div>
       )}
     </div>

@@ -535,8 +535,7 @@ export default function CheckoutSheet({
                 <button
                   type="button"
                   onClick={() => initiatePayment('card')}
-                  disabled={loadState === 'loading'}
-                  className="w-full py-3 rounded-xl bg-qraving-red text-white font-bold text-base transition-opacity active:opacity-80 disabled:opacity-40"
+                  className="w-full py-3 rounded-xl bg-qraving-button text-qraving-text font-bold text-base transition-opacity active:opacity-80"
                 >
                   Pay by Card
                 </button>
