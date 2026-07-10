@@ -16,6 +16,7 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
 }
 
 function isManagerRoute(pathname: string): boolean {
+  if (pathname.startsWith('/qraving-admin-panel')) return false;
   const parts = pathname.split('/').filter(Boolean);
   if (parts.length === 2) return true;
   if (parts.length === 3 && parts[2] === 'menu') return true;
