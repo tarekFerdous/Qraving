@@ -14,6 +14,11 @@ interface SessionContextValue {
   updateSession: (s: Session) => void;
   isExpired: boolean;
   resetSession: () => void;
+  /** True when Firestore reports fewer basket items than the previous snapshot,
+   *  and the change was not triggered by the local user. */
+  itemsRemovedExternally: boolean;
+  /** Call this after consuming the flag (e.g. after showing the toast). */
+  clearItemsRemovedExternally: () => void;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -21,7 +26,17 @@ const SessionContext = createContext<SessionContextValue | null>(null);
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session>(() => createSession(SESSION_ID));
   const [isExpired, setIsExpired] = useState(false);
+  const [itemsRemovedExternally, setItemsRemovedExternally] = useState(false);
+
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Tracks the total number of basket items seen in the last Firestore snapshot.
+  // Initialised to -1 so the very first snapshot never triggers the toast.
+  const prevItemCountRef = useRef<number>(-1);
+
+  // When the local user calls updateSession we suppress the toast for 1.5 s so
+  // that the echo of our own writes doesn't look like an external removal.
+  const suppressUntilRef = useRef<number>(0);
 
   useEffect(() => {
     const sessionRef = doc(db, SESSION_DOC);
@@ -58,6 +73,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         userId: d.id,
         ...(d.data() as Omit<UserBasket, 'userId'>),
       }));
+
+      // Detect external item removal (e.g. manager deleted a menu item)
+      const newTotal = baskets.reduce((sum, b) => sum + b.items.length, 0);
+      const prevTotal = prevItemCountRef.current;
+      const suppressed = Date.now() < suppressUntilRef.current;
+
+      if (!suppressed && prevTotal > 0 && newTotal < prevTotal) {
+        setItemsRemovedExternally(true);
+      }
+
+      prevItemCountRef.current = newTotal;
       setSession((prev) => ({ ...prev, baskets }));
     });
 
@@ -73,6 +99,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setIsExpired(false);
     const fresh = createSession(SESSION_ID);
     setSession(fresh);
+    prevItemCountRef.current = -1;
     const sessionRef = doc(db, SESSION_DOC);
     setDoc(
       sessionRef,
@@ -88,6 +115,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateSession = useCallback((s: Session) => {
+    // Suppress the external-removal toast for 1.5 s after any local write so
+    // the echo of our own Firestore updates does not look like an external change.
+    suppressUntilRef.current = Date.now() + 1500;
+
     setSession(s);
     const sessionRef = doc(db, SESSION_DOC);
 
@@ -121,8 +152,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const clearItemsRemovedExternally = useCallback(() => {
+    setItemsRemovedExternally(false);
+  }, []);
+
   return (
-    <SessionContext.Provider value={{ session, updateSession, isExpired, resetSession }}>
+    <SessionContext.Provider
+      value={{
+        session,
+        updateSession,
+        isExpired,
+        resetSession,
+        itemsRemovedExternally,
+        clearItemsRemovedExternally,
+      }}
+    >
       {children}
     </SessionContext.Provider>
   );
