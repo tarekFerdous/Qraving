@@ -15,6 +15,13 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
+function isManagerRoute(pathname: string): boolean {
+  const parts = pathname.split('/').filter(Boolean);
+  if (parts.length === 2) return true;
+  if (parts.length === 3 && parts[2] === 'menu') return true;
+  return false;
+}
+
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get('firebase-token')?.value;
@@ -32,9 +39,23 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL(ADMIN_ROOT, req.url));
   }
 
+  if (isManagerRoute(pathname)) {
+    const parts = pathname.split('/').filter(Boolean);
+    const companySlug = parts[0];
+    const loginPath = `/${companySlug}/login`;
+
+    if (claims?.role !== 'manager') {
+      return NextResponse.redirect(new URL(loginPath, req.url));
+    }
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/qraving-admin-panel/:path*'],
+  matcher: [
+    '/qraving-admin-panel/:path*',
+    '/:companySlug/:branchSlug',
+    '/:companySlug/:branchSlug/menu',
+  ],
 };
