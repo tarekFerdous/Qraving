@@ -14,6 +14,8 @@ export interface CheckoutSheetProps {
   basket: UserBasket;
   menuItems: MenuItem[];
   onClose: () => void;
+  companyId?: string;
+  branchId?: string;
 }
 
 type View = 'checkout' | 'confirmed';
@@ -80,6 +82,8 @@ export default function CheckoutSheet({
   basket,
   menuItems,
   onClose,
+  companyId,
+  branchId,
 }: CheckoutSheetProps) {
   const [visible, setVisible] = useState(false);
   const [view, setView] = useState<View>('checkout');
@@ -144,6 +148,37 @@ export default function CheckoutSheet({
       }
     };
   }, []);
+
+  // Persist order to Firestore when payment is confirmed
+  useEffect(() => {
+    if (view !== 'confirmed' || !companyId || !branchId) return;
+    fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        companyId,
+        branchId,
+        sessionId: session.id,
+        items: basket.items.map((i) => ({
+          itemId: i.itemId,
+          name: i.name,
+          quantity: i.quantity,
+          price: 0,
+          customizations: { size: i.size, addOns: i.addOns },
+        })),
+        totalCents: Math.round(total * 100),
+        user: {
+          name: basket.name,
+          phone: basket.phone,
+          ...(basket.email ? { email: basket.email } : {}),
+        },
+      }),
+    }).catch(() => {
+      // Non-fatal: order persistence failure should not block the confirmed UI
+    });
+    // Run once when view first becomes 'confirmed'
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
   const handleClose = useCallback(() => {
     setVisible(false);

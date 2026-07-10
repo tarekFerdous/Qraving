@@ -10,6 +10,7 @@ export type UserBasket = {
   userId: string
   name: string        // "User 1" default, max 50 chars
   phone: string       // E.164, "+1XXXXXXXXXX"
+  email?: string      // optional, captured at identity step
   items: BasketItem[]
   paymentStatus: 'pending' | 'paid' | 'failed'
   paymentMethod: 'apple_pay' | 'google_pay' | 'card' | 'interac' | null

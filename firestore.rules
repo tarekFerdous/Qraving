@@ -18,6 +18,12 @@ service cloud.firestore {
       allow write: if false; // written only via Admin SDK (API routes)
     }
 
+    // Orders — written only via Admin SDK; readable by superadmin or managers
+    match /orders/{orderId} {
+      allow read: if isSuperadmin() || (request.auth != null && request.auth.token.role == 'manager');
+      allow write: if false; // written only via Admin SDK
+    }
+
     // Companies — superadmin writes; anyone reads
     match /companies/{companyId} {
       allow read: if true;
