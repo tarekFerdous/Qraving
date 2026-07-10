@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { MenuSection, MenuItem } from '@/lib/menu';
+import { deriveCacheKey, readMenuCache, writeMenuCache, prefetchMenuImages } from '@/lib/menu-cache';
 import { db } from '@/lib/firebase-client';
 import { collection, onSnapshot } from 'firebase/firestore';
 import SectionNavigator from '@/components/SectionNavigator';
@@ -14,9 +15,11 @@ import Image from 'next/image';
 
 interface MenuPageProps {
   sections: MenuSection[];
+  company: string;
+  branch: string;
 }
 
-export default function MenuPage({ sections }: MenuPageProps) {
+export default function MenuPage({ sections, company, branch }: MenuPageProps) {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [logoError, setLogoError] = useState(false);
   const [basketsOpen, setBasketsOpen] = useState(false);
@@ -25,11 +28,16 @@ export default function MenuPage({ sections }: MenuPageProps) {
   const [finished, setFinished] = useState(false);
   const [checkoutBasket, setCheckoutBasket] = useState<UserBasket | null>(null);
   const [availabilityMap, setAvailabilityMap] = useState<Map<string, boolean>>(new Map());
+  const [cachedSections, setCachedSections] = useState<MenuSection[] | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const cacheKey = deriveCacheKey(company, branch);
+    return readMenuCache(cacheKey);
+  });
   const { session, updateSession, isExpired, resetSession } = useSession();
   const basketCount = session.baskets.length;
 
   useEffect(() => {
-    const ref = collection(db, 'companies/demo-company/branches/demo-branch/menuItems');
+    const ref = collection(db, `companies/${company}/branches/${branch}/menuItems`);
     const unsub = onSnapshot(ref, (snap) => {
       const map = new Map<string, boolean>();
       for (const doc of snap.docs) {
@@ -38,15 +46,31 @@ export default function MenuPage({ sections }: MenuPageProps) {
       setAvailabilityMap(map);
     });
     return unsub;
+  }, [company, branch]);
+
+  // Persist menu to sessionStorage and pre-warm image cache on first render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const cacheKey = deriveCacheKey(company, branch);
+    writeMenuCache(cacheKey, sections);
+    prefetchMenuImages(sections);
+    setCachedSections(sections);
   }, []);
 
-  const displaySections = sections.map((s) => ({
-    ...s,
-    items: s.items.map((item) => ({
-      ...item,
-      isAvailable: item.isAvailable && (availabilityMap.get(item.id) ?? item.isAvailable),
-    })),
-  }));
+  const displaySections = useMemo(() => {
+    const source = cachedSections ?? sections;
+    return source.map((s) => ({
+      ...s,
+      items: s.items.map((item) => {
+        const liveAvailable = availabilityMap.get(item.id);
+        const isAvailable = liveAvailable !== undefined
+          ? item.isAvailable && liveAvailable
+          : item.isAvailable;
+        if (isAvailable === item.isAvailable) return item;
+        return { ...item, isAvailable };
+      }),
+    }));
+  }, [cachedSections, sections, availabilityMap]);
 
   // Flatten all menu items for basket total computation in CheckoutSheet
   const menuItems = displaySections.flatMap((s) => s.items);

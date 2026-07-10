@@ -19,11 +19,9 @@ type CatchAllPageProps = {
 export default async function CatchAllPage({ params }: CatchAllPageProps) {
   const { path } = await params;
 
-  // Expose segments for future use (company, branch, table, etc.)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [company, branch, table, ...rest] = path ?? [];
 
-  const sections = await getMenu();
+  const sections = await getMenu(company, branch);
 
-  return <MenuPage sections={sections} />;
+  return <MenuPage sections={sections} company={company} branch={branch} />;
 }

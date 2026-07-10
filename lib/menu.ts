@@ -38,11 +38,8 @@ export interface MenuSection {
   items: MenuItem[];
 }
 
-const COMPANY_ID = 'demo-company';
-const BRANCH_ID = 'demo-branch';
-
-export async function getMenu(): Promise<MenuSection[]> {
-  const base = `companies/${COMPANY_ID}/branches/${BRANCH_ID}`;
+export async function getMenu(company: string, branch: string): Promise<MenuSection[]> {
+  const base = `companies/${company}/branches/${branch}`;
 
   const [categoriesSnap, itemsSnap] = await Promise.all([
     adminDb.collection(`${base}/categories`).orderBy('order', 'asc').get(),

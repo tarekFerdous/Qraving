@@ -62,7 +62,7 @@ describe('getMenu', () => {
       ],
     );
 
-    const sections = await getMenu();
+    const sections = await getMenu('demo-company', 'demo-branch');
 
     expect(sections).toHaveLength(2);
     expect(sections[0].id).toBe('cat-1');
@@ -90,7 +90,7 @@ describe('getMenu', () => {
       ],
     );
 
-    const sections = await getMenu();
+    const sections = await getMenu('demo-company', 'demo-branch');
     expect(sections[0].items[0].price).toBe(12.5);
   });
 
@@ -110,7 +110,7 @@ describe('getMenu', () => {
       ],
     );
 
-    const sections = await getMenu();
+    const sections = await getMenu('demo-company', 'demo-branch');
     expect(sections[0].items[0].isAvailable).toBe(false);
   });
 });
