@@ -14,6 +14,8 @@ import {
   serverTimestamp,
   onSnapshot,
   Timestamp,
+  DocumentReference,
+  DocumentData,
 } from 'firebase/firestore';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -203,7 +205,45 @@ export async function deleteItem(
   categoryId: string,
   itemId: string,
 ): Promise<void> {
+  // 1. Delete the menu item doc itself
   await deleteDoc(doc(db, itemsPath(companyId, branchId, categoryId), itemId));
+
+  // 2. Remove the deleted item from all active session carts
+  const sessionsCol = `companies/${companyId}/branches/${branchId}/sessions`;
+  const sessionsSnap = await getDocs(collection(db, sessionsCol));
+
+  // Collect all basket docs that contain the deleted item
+  const basketUpdates: Array<{
+    ref: DocumentReference<DocumentData>;
+    filteredItems: DocumentData[];
+  }> = [];
+
+  for (const sessionDoc of sessionsSnap.docs) {
+    const basketsSnap = await getDocs(
+      collection(db, `${sessionsCol}/${sessionDoc.id}/baskets`),
+    );
+    for (const basketDoc of basketsSnap.docs) {
+      const data = basketDoc.data();
+      const items = (data.items ?? []) as Array<{ itemId: string }>;
+      if (items.some((i) => i.itemId === itemId)) {
+        basketUpdates.push({
+          ref: basketDoc.ref,
+          filteredItems: items.filter((i) => i.itemId !== itemId),
+        });
+      }
+    }
+  }
+
+  if (basketUpdates.length === 0) return;
+
+  // Write in chunks of 499 (Firestore batch limit is 500 ops)
+  for (let start = 0; start < basketUpdates.length; start += 499) {
+    const batch = writeBatch(db);
+    basketUpdates.slice(start, start + 499).forEach(({ ref, filteredItems }) => {
+      batch.update(ref, { items: filteredItems });
+    });
+    await batch.commit();
+  }
 }
 
 export async function reorderItems(

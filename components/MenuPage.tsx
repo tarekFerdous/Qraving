@@ -10,6 +10,7 @@ import AddToCartSheet from '@/components/AddToCartSheet';
 import BasketsSheet from '@/components/BasketsSheet';
 import CheckoutSheet from '@/components/CheckoutSheet';
 import { useSession } from '@/lib/session-context';
+import { useRemovedItemsToast } from '@/components/RemovedItemsToast';
 import { createSession, UserBasket } from '@/lib/session';
 import Image from 'next/image';
 
@@ -33,8 +34,18 @@ export default function MenuPage({ sections, company, branch }: MenuPageProps) {
     const cacheKey = deriveCacheKey(company, branch);
     return readMenuCache(cacheKey);
   });
-  const { session, updateSession, isExpired, resetSession } = useSession();
+  const { session, updateSession, isExpired, resetSession, itemsRemovedExternally, clearItemsRemovedExternally } = useSession();
   const basketCount = session.baskets.length;
+
+  const { trigger: triggerRemovedToast, Toast: RemovedToast } = useRemovedItemsToast();
+
+  // Show a toast whenever the manager removes an item that was in a cart
+  useEffect(() => {
+    if (itemsRemovedExternally) {
+      triggerRemovedToast();
+      clearItemsRemovedExternally();
+    }
+  }, [itemsRemovedExternally, triggerRemovedToast, clearItemsRemovedExternally]);
 
   useEffect(() => {
     const ref = collection(db, `companies/${company}/branches/${branch}/menuItems`);
@@ -209,6 +220,9 @@ export default function MenuPage({ sections, company, branch }: MenuPageProps) {
           </button>
         </div>
       )}
+
+      {/* Toast: shown when a manager deletes a menu item that was in a basket */}
+      {RemovedToast}
     </div>
   );
 }
