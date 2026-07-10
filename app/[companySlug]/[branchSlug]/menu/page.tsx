@@ -17,6 +17,7 @@ import {
   reorderCategories,
   deleteCategory,
 } from '@/lib/manager-menu';
+import CategoryItemsSection from '@/components/manager/CategoryItemsSection';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -359,12 +360,16 @@ export default function MenuEditorPage() {
                       </button>
                     </div>
 
-                    {/* Items placeholder */}
-                    <div className="px-12 pb-3">
-                      <p className="text-xs text-gray-400 italic">
-                        No items yet — items editor coming soon
-                      </p>
-                    </div>
+                    {/* Items section */}
+                    {companyId && branchId && (
+                      <div className="px-12 pb-4">
+                        <CategoryItemsSection
+                          companyId={companyId}
+                          branchId={branchId}
+                          categoryId={cat.id}
+                        />
+                      </div>
+                    )}
                   </li>
                 ))}
 
