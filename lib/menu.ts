@@ -38,6 +38,15 @@ export interface MenuSection {
   items: MenuItem[];
 }
 
+export async function isMenuPublished(companyId: string, branchId: string): Promise<boolean> {
+  if (!companyId || !branchId) return false;
+  const snap = await adminDb
+    .doc(`companies/${companyId}/branches/${branchId}/menu/config`)
+    .get();
+  if (!snap.exists) return false;
+  return snap.data()?.published === true;
+}
+
 export async function getMenu(company: string, branch: string): Promise<MenuSection[]> {
   const base = `companies/${company}/branches/${branch}`;
 

@@ -9,8 +9,9 @@
  * once the app grows (company / branch / table identifiers, etc.).
  */
 
-import { getMenu } from '@/lib/menu';
+import { getMenu, isMenuPublished } from '@/lib/menu';
 import MenuPage from '@/components/MenuPage';
+import MenuNotAvailable from '@/components/MenuNotAvailable';
 
 type CatchAllPageProps = {
   params: Promise<{ path: string[] }>;
@@ -20,6 +21,12 @@ export default async function CatchAllPage({ params }: CatchAllPageProps) {
   const { path } = await params;
 
   const [company, branch, table, ...rest] = path ?? [];
+
+  const published = await isMenuPublished(company, branch);
+
+  if (!published) {
+    return <MenuNotAvailable />;
+  }
 
   const sections = await getMenu(company, branch);
 
