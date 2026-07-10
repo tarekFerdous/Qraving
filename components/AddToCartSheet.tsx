@@ -80,6 +80,7 @@ export default function AddToCartSheet({
 
   // --- Identity state (step 2) ---
   const [identityName, setIdentityName] = useState('');
+  const [identityEmail, setIdentityEmail] = useState('');
   const [segments, setSegments] = useState(['', '', '']);
 
   // Phone segment input refs
@@ -108,6 +109,7 @@ export default function AddToCartSheet({
       setStep('customise');
       setSegments(['', '', '']);
       setIdentityName('');
+      setIdentityEmail('');
       setShowFinishConfirm(false);
       stagedItem.current = null;
       requestAnimationFrame(() => setVisible(true));
@@ -287,7 +289,8 @@ export default function AddToCartSheet({
     const name = identityName.trim() || label;
 
     // Build basket, add staged item, attach to session
-    const emptyBasket: UserBasket = { userId, name, phone, items: [], paymentStatus: 'pending', paymentMethod: null, helcimTransactionId: null };
+    const emailValue = identityEmail.trim() || undefined;
+    const emptyBasket: UserBasket = { userId, name, phone, ...(emailValue ? { email: emailValue } : {}), items: [], paymentStatus: 'pending', paymentMethod: null, helcimTransactionId: null };
     const basketWithItem = upsertItem(emptyBasket, stagedItem.current);
     const finalSession = addBasket(sessionV2, basketWithItem);
 
@@ -689,6 +692,25 @@ export default function AddToCartSheet({
                   className="w-20 rounded-xl border border-gray-200 px-2 py-2.5 text-sm text-gray-800 text-center placeholder-gray-400 focus:outline-none focus:border-red-400"
                 />
               </div>
+            </div>
+
+            {/* Email field (optional) */}
+            <div>
+              <label
+                htmlFor="identity-email"
+                className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2"
+              >
+                Email <span className="normal-case font-normal text-gray-400">(optional)</span>
+              </label>
+              <input
+                id="identity-email"
+                type="email"
+                inputMode="email"
+                value={identityEmail}
+                onChange={(e) => setIdentityEmail(e.target.value)}
+                placeholder="your@email.com"
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-red-400"
+              />
             </div>
 
             {/* Add to basket — disabled until phone is complete */}

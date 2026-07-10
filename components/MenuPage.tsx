@@ -160,6 +160,8 @@ export default function MenuPage({ sections, company, branch }: MenuPageProps) {
           basket={checkoutBasket}
           menuItems={menuItems}
           onClose={() => setCheckoutBasket(null)}
+          companyId={company}
+          branchId={branch}
         />
       )}
 
