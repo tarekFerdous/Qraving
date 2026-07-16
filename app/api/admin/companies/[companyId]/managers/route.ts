@@ -3,7 +3,7 @@ import { requireRole } from '@/lib/auth-server';
 import { getAuth } from 'firebase-admin/auth';
 import { Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
-import { getCompany, getBranchNodes } from '@/lib/company';
+import { getCompany, getNodes } from '@/lib/company';
 
 type Params = { params: Promise<{ companyId: string }> };
 
@@ -13,14 +13,16 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const { companyId } = await params;
 
-  const managersSnap = await adminDb
+  const company = await getCompany(companyId);
+  if (!company) return NextResponse.json({ error: 'Company not found' }, { status: 404 });
+
+  const usersSnap = await adminDb
     .collection('users')
-    .where('role', '==', 'manager')
     .where('companyId', '==', companyId)
     .get();
 
   const managers = await Promise.all(
-    managersSnap.docs.map(async (d) => {
+    usersSnap.docs.filter((d) => d.data().role === 'manager').map(async (d) => {
       const data = d.data();
       let disabled = false;
       try {
@@ -33,9 +35,12 @@ export async function GET(req: NextRequest, { params }: Params) {
     }),
   );
 
-  const branches = await getBranchNodes(companyId);
+  const allNodes = await getNodes(companyId);
+  const managerLayerIndex = company.managerLayerIndex ?? 0;
+  const managerNodes = allNodes.filter((n) => n.depth === managerLayerIndex);
+  const managerLayerLabel = company.layers[managerLayerIndex]?.label ?? 'Branch';
 
-  return NextResponse.json({ managers, branches });
+  return NextResponse.json({ managers, branches: managerNodes, managerLayerLabel });
 }
 
 export async function POST(req: NextRequest, { params }: Params) {

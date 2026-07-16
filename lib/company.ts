@@ -5,6 +5,7 @@ import { randomBytes } from 'crypto';
 export interface LayerConfig {
   index: number;
   label: string;
+  isLeafLayer: boolean;
 }
 
 export interface Company {
@@ -12,6 +13,7 @@ export interface Company {
   name: string;
   slug: string;
   layers: LayerConfig[];
+  managerLayerIndex: number;
   createdAt: Timestamp;
 }
 
@@ -49,12 +51,13 @@ export async function ensureUniqueSlug(candidateSlug: string): Promise<string> {
   return `${candidateSlug}-${Date.now()}`;
 }
 
-export async function createCompany(data: { name: string; slug: string; layers: LayerConfig[] }): Promise<string> {
+export async function createCompany(data: { name: string; slug: string; layers: LayerConfig[]; managerLayerIndex: number }): Promise<string> {
   const ref = adminDb.collection('companies').doc();
   await ref.set({
     name: data.name,
     slug: data.slug,
     layers: data.layers,
+    managerLayerIndex: data.managerLayerIndex,
     createdAt: Timestamp.now(),
   });
   return ref.id;
@@ -75,9 +78,10 @@ export async function getNodes(companyId: string): Promise<CompanyNode[]> {
   const snap = await adminDb
     .collection(`companies/${companyId}/nodes`)
     .where('active', '==', true)
-    .orderBy('depth', 'asc')
     .get();
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CompanyNode, 'id'>) }));
+  return snap.docs
+    .map((d) => ({ id: d.id, ...(d.data() as Omit<CompanyNode, 'id'>) }))
+    .sort((a, b) => a.depth - b.depth);
 }
 
 export async function buildFullPath(companyId: string, nodeId: string): Promise<string> {
@@ -144,11 +148,60 @@ export async function deactivateNode(companyId: string, nodeId: string): Promise
   await adminDb.doc(`companies/${companyId}/nodes/${nodeId}`).update({ active: false });
 }
 
-export async function getBranchNodes(companyId: string): Promise<CompanyNode[]> {
+
+export async function getNodeChain(companyId: string, slugs: string[]): Promise<CompanyNode[]> {
+  let parentId: string | null = null;
+  const chain: CompanyNode[] = [];
+
+  for (const slug of slugs) {
+    const snap = await adminDb
+      .collection(`companies/${companyId}/nodes`)
+      .where('slug', '==', slug)
+      .where('parentId', '==', parentId)
+      .where('active', '==', true)
+      .limit(1)
+      .get();
+    if (snap.empty) return [];
+    const node = { id: snap.docs[0].id, ...(snap.docs[0].data() as Omit<CompanyNode, 'id'>) };
+    chain.push(node);
+    parentId = node.id;
+  }
+
+  return chain;
+}
+
+export async function getDescendantNodes(companyId: string, nodeId: string): Promise<CompanyNode[]> {
+  const allNodes = await getNodes(companyId);
+  const result: CompanyNode[] = [];
+  const queue = [nodeId];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const children = allNodes.filter((n) => n.parentId === current);
+    for (const child of children) {
+      result.push(child);
+      queue.push(child.id);
+    }
+  }
+
+  return result;
+}
+
+export async function getCompanyBySlug(slug: string): Promise<Company | null> {
+  const snap = await adminDb.collection('companies').where('slug', '==', slug).limit(1).get();
+  if (snap.empty) return null;
+  const doc = snap.docs[0];
+  return { id: doc.id, ...(doc.data() as Omit<Company, 'id'>) };
+}
+
+export async function getNodeByQRCode(companyId: string, qrCode: string): Promise<CompanyNode | null> {
   const snap = await adminDb
     .collection(`companies/${companyId}/nodes`)
-    .where('depth', '==', 0)
+    .where('qrCode', '==', qrCode)
     .where('active', '==', true)
+    .limit(1)
     .get();
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CompanyNode, 'id'>) }));
+  if (snap.empty) return null;
+  const doc = snap.docs[0];
+  return { id: doc.id, ...(doc.data() as Omit<CompanyNode, 'id'>) };
 }

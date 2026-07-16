@@ -6,8 +6,12 @@ import QRCode from 'qrcode';
 type Params = { params: Promise<{ companyId: string; nodeId: string }> };
 
 export async function POST(req: NextRequest, { params }: Params) {
-  const auth = await requireRole('superadmin');
-  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const superadminAuth = await requireRole('superadmin');
+  const managerAuth = await requireRole('manager');
+
+  if (!superadminAuth && !managerAuth) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   const { companyId, nodeId } = await params;
   const body = await req.json() as { action: 'generate-qr' | 'deactivate' };

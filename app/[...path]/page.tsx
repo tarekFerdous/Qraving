@@ -1,17 +1,8 @@
-/**
- * Catch-all route: captures every URL segment under /
- *
- * The `params.path` array holds each segment, e.g.:
- *   /foo/bar/baz  →  ["foo", "bar", "baz"]
- *   /a/b/c/d/e   →  ["a", "b", "c", "d", "e"]
- *
- * Downstream pages/components can destructure segments as needed
- * once the app grows (company / branch / table identifiers, etc.).
- */
-
 import { getMenu, isMenuPublished } from '@/lib/menu';
+import { getCompanyBySlug, getNodeByQRCode } from '@/lib/company';
 import MenuPage from '@/components/MenuPage';
 import MenuNotAvailable from '@/components/MenuNotAvailable';
+import LocationNotFound from '@/components/LocationNotFound';
 
 type CatchAllPageProps = {
   params: Promise<{ path: string[] }>;
@@ -20,15 +11,30 @@ type CatchAllPageProps = {
 export default async function CatchAllPage({ params }: CatchAllPageProps) {
   const { path } = await params;
 
-  const [company, branch, table, ...rest] = path ?? [];
+  if (!path || path.length < 2) {
+    return <LocationNotFound />;
+  }
 
-  const published = await isMenuPublished(company, branch);
+  const companySlug = path[0];
+  const qrCode = path[path.length - 1];
+  const branch = path[1];
 
+  const company = await getCompanyBySlug(companySlug);
+  if (!company) {
+    return <LocationNotFound />;
+  }
+
+  const node = await getNodeByQRCode(company.id, qrCode);
+  if (!node) {
+    return <LocationNotFound />;
+  }
+
+  const published = await isMenuPublished(companySlug, branch);
   if (!published) {
     return <MenuNotAvailable />;
   }
 
-  const sections = await getMenu(company, branch);
+  const sections = await getMenu(companySlug, branch);
 
-  return <MenuPage sections={sections} company={company} branch={branch} />;
+  return <MenuPage sections={sections} company={companySlug} branch={branch} />;
 }

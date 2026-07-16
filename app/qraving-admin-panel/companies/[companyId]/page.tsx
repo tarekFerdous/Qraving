@@ -45,6 +45,9 @@ function NodeRow({
   const nextLayerLabel = company.layers[node.depth + 1]?.label;
   const isLastLayer = node.depth >= company.layers.length - 1;
   const childIsLeaf = node.depth + 1 >= company.layers.length - 1;
+  const firstLeafLayerIndex = company.layers.findIndex((l) => l.isLeafLayer);
+  const isSchemaLeafLayer = firstLeafLayerIndex !== -1 && node.depth >= firstLeafLayerIndex;
+  const superAdminCanAddChild = firstLeafLayerIndex === -1 || node.depth < firstLeafLayerIndex - 1;
 
   function downloadQR() {
     if (!node.qrDataUrl) return;
@@ -75,6 +78,9 @@ function NodeRow({
           <span className="text-sm text-gray-900">{node.label}</span>
           <span className="ml-2 text-xs text-gray-400">/{node.slug}</span>
           <span className="ml-2 text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{layerLabel}</span>
+          {isSchemaLeafLayer && (
+            <span className="ml-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">Leaf</span>
+          )}
         </div>
 
         {node.isLeaf && (
@@ -112,7 +118,7 @@ function NodeRow({
           </div>
         )}
 
-        {!node.isLeaf && nextLayerLabel && (
+        {!node.isLeaf && nextLayerLabel && superAdminCanAddChild && (
           <button
             onClick={() => onAddChild(node.id, node.depth + 1, childIsLeaf)}
             className="hidden group-hover:flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 transition-colors"
@@ -178,13 +184,18 @@ export default function CompanyDetailPage() {
   const [company, setCompany] = useState<Company | null>(null);
   const [nodes, setNodes] = useState<NodeWithQR[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [addModal, setAddModal] = useState<AddNodeModal | null>(null);
   const [newNodeLabel, setNewNodeLabel] = useState('');
   const [addingNode, setAddingNode] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/admin/companies/${companyId}`, { credentials: 'include' });
-    if (!res.ok) return;
+    if (!res.ok) {
+      setLoadError('Failed to load company data. Please refresh the page.');
+      setLoading(false);
+      return;
+    }
     const data = await res.json() as { company: Company; nodes: CompanyNode[] };
     setCompany(data.company);
     setNodes(data.nodes);
@@ -252,14 +263,16 @@ export default function CompanyDetailPage() {
     setNodes((prev) => prev.filter((n) => n.id !== nodeId));
   }
 
-  if (loading || !company) {
-    return <div className="text-sm text-gray-500">Loading…</div>;
-  }
+  if (loading) return <div className="text-sm text-gray-500">Loading…</div>;
+  if (loadError) return <div className="text-sm text-red-500">{loadError}</div>;
+  if (!company) return null;
 
   const tree = buildTree(nodes);
   const rootNodes = tree.get(null) ?? [];
   const rootLayerLabel = company.layers[0]?.label ?? 'Branch';
   const rootIsLeaf = company.layers.length === 1;
+  const firstLeafLayerIndex = company.layers.findIndex((l) => l.isLeafLayer);
+  const superAdminCanAddRoot = firstLeafLayerIndex === -1 || 0 < firstLeafLayerIndex;
 
   return (
     <div>
@@ -271,24 +284,28 @@ export default function CompanyDetailPage() {
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-medium text-gray-700">Venue hierarchy</h2>
-          <button
-            onClick={() => setAddModal({ parentId: null, depth: 0, isLeaf: rootIsLeaf })}
-            className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors"
-          >
-            <Plus size={14} />
-            Add {rootLayerLabel}
-          </button>
+          {superAdminCanAddRoot && (
+            <button
+              onClick={() => setAddModal({ parentId: null, depth: 0, isLeaf: rootIsLeaf })}
+              className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              <Plus size={14} />
+              Add {rootLayerLabel}
+            </button>
+          )}
         </div>
 
         {rootNodes.length === 0 ? (
           <div className="text-center py-10 text-gray-400">
             <p className="text-sm">No {rootLayerLabel.toLowerCase()}s yet.</p>
-            <button
-              onClick={() => setAddModal({ parentId: null, depth: 0, isLeaf: rootIsLeaf })}
-              className="mt-2 text-sm text-gray-700 underline underline-offset-2"
-            >
-              Add your first {rootLayerLabel.toLowerCase()} →
-            </button>
+            {superAdminCanAddRoot && (
+              <button
+                onClick={() => setAddModal({ parentId: null, depth: 0, isLeaf: rootIsLeaf })}
+                className="mt-2 text-sm text-gray-700 underline underline-offset-2"
+              >
+                Add your first {rootLayerLabel.toLowerCase()} →
+              </button>
+            )}
           </div>
         ) : (
           <div>

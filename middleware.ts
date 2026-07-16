@@ -17,10 +17,9 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
 
 function isManagerRoute(pathname: string): boolean {
   if (pathname.startsWith('/qraving-admin-panel')) return false;
+  if (pathname.startsWith('/api/')) return false;
   const parts = pathname.split('/').filter(Boolean);
-  if (parts.length === 2) return true;
-  if (parts.length === 3 && parts[2] === 'menu') return true;
-  return false;
+  return parts.length >= 2 && parts[1] === 'admin';
 }
 
 export function middleware(req: NextRequest) {
@@ -45,8 +44,11 @@ export function middleware(req: NextRequest) {
     const companySlug = parts[0];
     const loginPath = `/${companySlug}/login`;
 
-    if (claims?.role !== 'manager') {
+    if (!claims) {
       return NextResponse.redirect(new URL(loginPath, req.url));
+    }
+    if (claims.role !== 'manager') {
+      return new NextResponse('Forbidden', { status: 403 });
     }
   }
 
@@ -58,5 +60,6 @@ export const config = {
     '/qraving-admin-panel/:path*',
     '/:companySlug/:branchSlug',
     '/:companySlug/:branchSlug/menu',
+    '/:companySlug/admin/:path*',
   ],
 };

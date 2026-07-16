@@ -22,7 +22,9 @@ export default function ManagersPage() {
   const { companyId } = useParams<{ companyId: string }>();
   const [managers, setManagers] = useState<Manager[]>([]);
   const [branches, setBranches] = useState<CompanyNode[]>([]);
+  const [managerLayerLabel, setManagerLayerLabel] = useState('Branch');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [creating, setCreating] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [email, setEmail] = useState('');
@@ -35,10 +37,15 @@ export default function ManagersPage() {
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/admin/companies/${companyId}/managers`, { credentials: 'include' });
-    if (!res.ok) return;
-    const data = await res.json() as { managers: Manager[]; branches: CompanyNode[] };
+    if (!res.ok) {
+      setLoadError('Failed to load managers. Please refresh the page.');
+      setLoading(false);
+      return;
+    }
+    const data = await res.json() as { managers: Manager[]; branches: CompanyNode[]; managerLayerLabel: string };
     setManagers(data.managers);
     setBranches(data.branches);
+    setManagerLayerLabel(data.managerLayerLabel ?? 'Branch');
     setLoading(false);
   }, [companyId]);
 
@@ -98,6 +105,7 @@ export default function ManagersPage() {
   }
 
   if (loading) return <div className="text-sm text-gray-500">Loading…</div>;
+  if (loadError) return <div className="text-sm text-red-500">{loadError}</div>;
 
   return (
     <div>
@@ -176,14 +184,14 @@ export default function ManagersPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Assign to branch</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Assign to {managerLayerLabel.toLowerCase()}</label>
                 <select
                   value={branchId}
                   onChange={(e) => setBranchId(e.target.value)}
                   required
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
                 >
-                  <option value="">Select branch…</option>
+                  <option value="">Select {managerLayerLabel.toLowerCase()}…</option>
                   {branches.map((b) => (
                     <option key={b.id} value={b.id}>{b.label}</option>
                   ))}

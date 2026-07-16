@@ -19,6 +19,8 @@ export default function SuperAdminLoginPage() {
       if (user) {
         const userDoc = await getDoc(doc(db, `users/${user.uid}`));
         if (userDoc.data()?.role === 'superadmin') {
+          const token = await user.getIdToken();
+          setFirebaseTokenCookie(token);
           router.replace('/qraving-admin-panel');
         }
       }
