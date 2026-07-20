@@ -64,6 +64,12 @@ service cloud.firestore {
             allow read, write: if true;
           }
         }
+
+        match /orders/{orderId} {
+          allow read: if isSuperadmin() || isManagerFor(companyId);
+          allow update: if isSuperadmin() || isManagerFor(companyId);
+          allow create, delete: if false; // written only via Admin SDK (order submission)
+        }
       }
     }
   }

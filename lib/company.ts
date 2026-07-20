@@ -205,3 +205,28 @@ export async function getNodeByQRCode(companyId: string, qrCode: string): Promis
   const doc = snap.docs[0];
   return { id: doc.id, ...(doc.data() as Omit<CompanyNode, 'id'>) };
 }
+
+export async function isNodeInBranch(companyId: string, nodeId: string, branchId: string): Promise<boolean> {
+  let currentId: string | null = nodeId;
+
+  while (currentId) {
+    if (currentId === branchId) return true;
+    const snap = await adminDb.doc(`companies/${companyId}/nodes/${currentId}`).get();
+    if (!snap.exists) return false;
+    const data = snap.data() as CompanyNode;
+    currentId = data.parentId;
+  }
+
+  return false;
+}
+
+export async function resolveBranchNode(
+  companyId: string,
+  branchId: string,
+): Promise<{ status: 'ok'; node: CompanyNode } | { status: 'not_found' } | { status: 'inactive' }> {
+  const snap = await adminDb.doc(`companies/${companyId}/nodes/${branchId}`).get();
+  if (!snap.exists) return { status: 'not_found' };
+  const node = { id: snap.id, ...(snap.data() as Omit<CompanyNode, 'id'>) };
+  if (!node.active) return { status: 'inactive' };
+  return { status: 'ok', node };
+}

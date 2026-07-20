@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth-server';
-import { generateQRCode, deactivateNode } from '@/lib/company';
+import { generateQRCode, deactivateNode, isNodeInBranch } from '@/lib/company';
 import QRCode from 'qrcode';
 
 type Params = { params: Promise<{ companyId: string; nodeId: string }> };
@@ -13,8 +13,20 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const role = superadminAuth ? 'superadmin' : 'manager';
+
   const { companyId, nodeId } = await params;
   const body = await req.json() as { action: 'generate-qr' | 'deactivate' };
+
+  if (role === 'manager') {
+    const branchId = managerAuth!.branchId;
+    if (!branchId || !(await isNodeInBranch(companyId, nodeId, branchId))) {
+      return NextResponse.json(
+        { error: 'Cannot modify a node outside your assigned branch.' },
+        { status: 403 },
+      );
+    }
+  }
 
   if (body.action === 'generate-qr') {
     const fullPath = await generateQRCode(companyId, nodeId);

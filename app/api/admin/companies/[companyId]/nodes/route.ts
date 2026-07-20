@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth-server';
-import { createNode, getCompany } from '@/lib/company';
+import { createNode, getCompany, isNodeInBranch } from '@/lib/company';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ companyId: string }> }) {
   const superadminAuth = await requireRole('superadmin');
@@ -22,6 +22,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ com
     depth: number;
     isLeaf: boolean;
   };
+
+  if (role === 'manager') {
+    const branchId = managerAuth!.branchId;
+    if (!branchId || body.parentId === null || !(await isNodeInBranch(companyId, body.parentId, branchId))) {
+      return NextResponse.json(
+        { error: 'Cannot create a node outside your assigned branch.' },
+        { status: 403 },
+      );
+    }
+  }
 
   const firstLeafLayerIndex = company.layers.findIndex((l) => l.isLeafLayer);
 

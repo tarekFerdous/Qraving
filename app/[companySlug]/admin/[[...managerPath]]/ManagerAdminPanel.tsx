@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Download, RefreshCw, PowerOff, Plus, X, Check, QrCode } from 'lucide-react';
 import type { LayerConfig, CompanyNode } from '@/lib/company';
 
-interface NodeWithQR extends CompanyNode {
+interface NodeWithQR extends Omit<CompanyNode, 'createdAt'> {
   qrDataUrl?: string;
   publicUrl?: string;
   generating?: boolean;
@@ -16,7 +16,7 @@ interface Props {
   layers: LayerConfig[];
   managerNodeId: string;
   ancestorLabels: string[];
-  initialDescendants: CompanyNode[];
+  initialDescendants: Omit<CompanyNode, 'createdAt'>[];
   firstLeafLayerIndex: number;
 }
 
@@ -85,7 +85,6 @@ export default function ManagerAdminPanel({
           qrCode: null,
           fullPath: null,
           active: true,
-          createdAt: null as unknown as ReturnType<typeof import('firebase-admin/firestore').Timestamp.now>,
         };
         setNodes((prev) => [...prev, newNode]);
         hideAddForm();

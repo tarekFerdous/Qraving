@@ -33,8 +33,8 @@ export default function ManagerLoginPage() {
       if (!user) return;
       const userDoc = await getDoc(doc(db, `users/${user.uid}`));
       const data = userDoc.data();
-      if (data?.role === 'manager' && data?.companySlug === companySlug && data?.branchSlug) {
-        router.replace(`/${companySlug}/${data.branchSlug}`);
+      if (data?.role === 'manager' && data?.companySlug === companySlug) {
+        router.replace(`/${companySlug}/admin`);
       }
     });
     return unsubscribe;
@@ -59,7 +59,7 @@ export default function ManagerLoginPage() {
 
       const token = await credential.user.getIdToken();
       setFirebaseTokenCookie(token);
-      router.replace(`/${companySlug}/${data.branchSlug}`);
+      router.replace(`/${companySlug}/admin`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Login failed';
       if (
