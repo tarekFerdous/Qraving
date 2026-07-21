@@ -528,7 +528,7 @@ export default function AddToCartSheet({
                 <p className="font-bold text-gray-900 text-base leading-tight truncate">
                   {item!.name}
                 </p>
-                <p className="text-sm font-semibold mt-0.5 text-qraving-red">
+                <p className="text-sm font-semibold mt-0.5 text-qraving-green">
                   ${item!.price.toFixed(2)} CAD
                 </p>
               </div>
@@ -550,7 +550,7 @@ export default function AddToCartSheet({
                         onClick={() => setSelectedSize(size)}
                         className={`flex-1 py-2 rounded-full text-sm font-semibold border transition-colors ${
                           active
-                            ? 'bg-qraving-red border-qraving-red text-white'
+                            ? 'bg-qraving-button border-qraving-button text-qraving-text'
                             : 'bg-transparent border-gray-300 text-gray-700'
                         }`}
                       >
@@ -577,7 +577,7 @@ export default function AddToCartSheet({
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggleAddOn(addOn)}
-                            className="w-4 h-4 rounded accent-qraving-red cursor-pointer"
+                            className="w-4 h-4 rounded accent-qraving-green cursor-pointer"
                           />
                         </label>
                       </li>
