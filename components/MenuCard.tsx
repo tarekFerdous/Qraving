@@ -127,7 +127,7 @@ function MenuCard({
           <div
             className="absolute inset-0 z-20"
             style={{
-              background: 'linear-gradient(to bottom, transparent 70%, rgba(0,0,0,0.65) 100%)',
+              background: 'linear-gradient(to bottom, transparent 70%, rgba(0,0,0,0.85) 100%)',
             }}
           />
 
