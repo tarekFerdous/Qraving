@@ -125,7 +125,7 @@ export default function BasketsSheet({ open, onClose, onModify, onProceedToPayme
         </div>
 
         {/* Sheet title */}
-        <div className="px-4 pt-2 pb-3 border-b border-gray-100">
+        <div className="px-4 pt-2 pb-3">
           <h2 className="text-lg font-bold text-gray-900">Baskets</h2>
         </div>
 
