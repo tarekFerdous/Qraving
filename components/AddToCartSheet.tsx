@@ -395,7 +395,7 @@ export default function AddToCartSheet({
           /* ── Edit mode: single-panel layout ── */
           <>
             {/* Title */}
-            <div className="px-4 pt-2 pb-3 border-b border-gray-100 shrink-0">
+            <div className="px-4 pt-2 pb-3 shrink-0">
               <h2 className="text-lg font-bold text-gray-900">
                 Edit {editBasketName}&apos;s Basket
               </h2>
@@ -514,7 +514,7 @@ export default function AddToCartSheet({
           /* ── Customise panel ── */
           <div className="overflow-y-auto">
             {/* Item header: thumbnail + name + price */}
-            <div className="flex items-center gap-3 px-4 py-3 border-t border-gray-100">
+            <div className="flex items-center gap-3 px-4 py-3">
               <div className="relative w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-gray-100">
                 <Image
                   src={item!.imageUrl}
