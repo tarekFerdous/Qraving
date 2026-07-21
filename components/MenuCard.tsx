@@ -1,10 +1,16 @@
 'use client';
 
-import { memo, useRef, useState } from 'react';
+import { memo, useLayoutEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Plus } from 'lucide-react';
 import { MenuItem } from '@/lib/menu';
 import { getDietaryIcon } from '@/lib/dietary';
+
+// Must match the rotateY transition duration below — the 3D rendering
+// context (perspective/preserve-3d/backfaceVisibility) is kept alive for
+// exactly this long after a flip closes, so the closing animation never gets
+// its compositing context yanked out from under it mid-transition.
+const FLIP_TRANSITION_MS = 450;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,6 +44,47 @@ function MenuCard({
 }: MenuCardProps) {
   const hasAllergens = item.allergens.length > 0;
 
+  // The perspective/preserve-3d 3D rendering context (plus the backface-
+  // visibility opacity-toggle workaround it requires) exists solely to
+  // support the flip-to-back-face interaction. Most cards are never flipped,
+  // so we only pay for that context while a flip is actually in progress or
+  // settled on the back face — never at rest. This avoids leaving every
+  // never-flipped card in an always-on 3D compositing context, which is
+  // fragile in WebKit when an ancestor (the category/card swiper) is
+  // mid-transform (see #136/#138).
+  //
+  // `flipContextActive` mirrors `flipped` the instant it becomes true (via
+  // useLayoutEffect, so the very first paint of the flip already has the 3D
+  // context in place — no one-frame flicker), and lingers true for the
+  // duration of the closing transition so that animation is never
+  // interrupted by the context disappearing mid-flight.
+  const [flipContextActive, setFlipContextActive] = useState(flipped);
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useLayoutEffect(() => {
+    if (flipped) {
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current);
+        closeTimeoutRef.current = null;
+      }
+      setFlipContextActive(true);
+      return;
+    }
+
+    // Card just closed (or was already closed) — keep the 3D context alive
+    // for the duration of the rotateY transition, then tear it down.
+    closeTimeoutRef.current = setTimeout(() => {
+      setFlipContextActive(false);
+      closeTimeoutRef.current = null;
+    }, FLIP_TRANSITION_MS);
+
+    return () => {
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current);
+      }
+    };
+  }, [flipped]);
+
   // Back-face scroll container — owns its own vertical scroll. A "back to top"
   // affordance appears once the user has scrolled down through the details.
   const backScrollRef = useRef<HTMLDivElement>(null);
@@ -52,13 +99,16 @@ function MenuCard({
   }
 
   return (
-    <div className="h-full w-full px-0" style={{ perspective: '1000px' }}>
+    <div
+      className="h-full w-full px-0"
+      style={flipContextActive ? { perspective: '1000px' } : undefined}
+    >
       {/* Card container — rotates on Y axis */}
       <div
         className="relative h-full w-full rounded-3xl"
         style={{
-          transformStyle: 'preserve-3d',
-          transition: 'transform 450ms cubic-bezier(0.4, 0, 0.2, 1)',
+          transformStyle: flipContextActive ? 'preserve-3d' : undefined,
+          transition: `transform ${FLIP_TRANSITION_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`,
           transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
         }}
       >
@@ -67,16 +117,20 @@ function MenuCard({
         ================================================================ */}
         <div
           className="absolute inset-0 rounded-3xl overflow-hidden"
-          style={{
-            backfaceVisibility: 'hidden',
-            WebkitBackfaceVisibility: 'hidden',
-            // iOS WebKit fallback: backfaceVisibility fails when overflow:hidden
-            // is set on a preserve-3d child. Opacity toggled at the flip midpoint
-            // so the wrong face is always invisible regardless of backface support.
-            opacity: flipped ? 0 : 1,
-            transition: 'opacity 0ms 225ms',
-            pointerEvents: flipped ? 'none' : undefined,
-          }}
+          style={
+            flipContextActive
+              ? {
+                  backfaceVisibility: 'hidden',
+                  WebkitBackfaceVisibility: 'hidden',
+                  // iOS WebKit fallback: backfaceVisibility fails when overflow:hidden
+                  // is set on a preserve-3d child. Opacity toggled at the flip midpoint
+                  // so the wrong face is always invisible regardless of backface support.
+                  opacity: flipped ? 0 : 1,
+                  transition: 'opacity 0ms 225ms',
+                  pointerEvents: flipped ? 'none' : undefined,
+                }
+              : undefined
+          }
         >
           {/* Full-bleed photo */}
           <Image
@@ -198,15 +252,26 @@ function MenuCard({
         ================================================================ */}
         <div
           className="absolute inset-0 flex flex-col rounded-3xl overflow-hidden bg-white"
-          style={{
-            backfaceVisibility: 'hidden',
-            WebkitBackfaceVisibility: 'hidden',
-            transform: 'rotateY(180deg)',
-            // Matching opacity fallback for the back face.
-            opacity: flipped ? 1 : 0,
-            transition: 'opacity 0ms 225ms',
-            pointerEvents: flipped ? undefined : 'none',
-          }}
+          style={
+            flipContextActive
+              ? {
+                  backfaceVisibility: 'hidden',
+                  WebkitBackfaceVisibility: 'hidden',
+                  transform: 'rotateY(180deg)',
+                  // Matching opacity fallback for the back face.
+                  opacity: flipped ? 1 : 0,
+                  transition: 'opacity 0ms 225ms',
+                  pointerEvents: flipped ? undefined : 'none',
+                }
+              : {
+                  // At rest the back face is simply hidden — no need for the
+                  // backfaceVisibility/perspective workaround since there's no
+                  // active 3D transform to fight WebKit's compositor over.
+                  transform: 'rotateY(180deg)',
+                  opacity: 0,
+                  pointerEvents: 'none',
+                }
+          }
         >
           {/* Back header */}
           <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 shrink-0">

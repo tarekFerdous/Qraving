@@ -60,6 +60,33 @@ export default function SectionNavigator({
   const activeSectionRef = useRef(0);
   activeSectionRef.current = activeSection;
 
+  // Once a section's CardSwiper has ever mounted (i.e. it entered the ±1
+  // proximity window below), it stays mounted for the rest of the session —
+  // it is never unmounted again, even after scrolling further away. This
+  // avoids WebKit dropping overlay content mid-animation when a CardSwiper
+  // (and its <Image> nodes) remount in the same commit as the section-slide
+  // transform. Sections that have never been approached still do not mount
+  // upfront — this only changes the unmount side, not the initial lazy-mount
+  // trigger. No eviction policy: acceptable for realistic menu sizes (~200
+  // items).
+  const [visitedSections, setVisitedSections] = useState<Set<number>>(
+    () => new Set([0])
+  );
+
+  useEffect(() => {
+    setVisitedSections((prev) => {
+      let next: Set<number> | null = null;
+      for (let i = activeSection - 1; i <= activeSection + 1; i++) {
+        if (i < 0 || i >= sections.length) continue;
+        if (!prev.has(i)) {
+          if (!next) next = new Set(prev);
+          next.add(i);
+        }
+      }
+      return next ?? prev;
+    });
+  }, [activeSection, sections.length]);
+
   /** Lock to prevent overlapping section animations. */
   const isAnimatingSection = useRef(false);
 
@@ -328,6 +355,7 @@ export default function SectionNavigator({
           {sections.map((section, i) => (
             <div
               key={section.name}
+              data-testid={`menu-section-${i}`}
               className="h-full shrink-0 flex flex-col overflow-hidden"
             >
               {/* Live category name — folded into the section so it snaps in
@@ -341,13 +369,20 @@ export default function SectionNavigator({
               </div>
 
               {/* Cards fill the remaining height (taller cards, same width).
-                  Only mount the active section and its immediate neighbours —
-                  off-screen sections are empty divs so their card images and
-                  blur textures are not held in GPU memory. The target section
-                  is always already within this ±1 window before navigation
-                  fires, so there is no visible blank flash during the slide. */}
+                  Mount the active section and its immediate neighbours —
+                  never-approached sections are empty divs so their card
+                  images and blur textures are not held in GPU memory
+                  upfront. The target section is always already within this
+                  ±1 window before navigation fires, so there is no visible
+                  blank flash during the slide. Once a section has entered
+                  this window at least once, `visitedSections` keeps it
+                  mounted permanently — remounting a CardSwiper (and its
+                  <Image> nodes) in the same commit as the slide transform is
+                  what causes WebKit to visibly drop overlay content mid-
+                  animation, so a previously-visited section is never torn
+                  down again. */}
               <div className="flex-1 min-h-0">
-                {Math.abs(i - activeSection) <= 1 && (
+                {(Math.abs(i - activeSection) <= 1 || visitedSections.has(i)) && (
                   <CardSwiper
                     ref={(el) => {
                       swiperRefs.current[i] = el;

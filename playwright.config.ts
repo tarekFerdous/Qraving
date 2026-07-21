@@ -13,5 +13,9 @@ export default defineConfig({
       name: 'Mobile Chrome',
       use: { ...devices['iPhone 14'] },
     },
+    {
+      name: 'webkit',
+      use: { ...devices['iPhone 14'], browserName: 'webkit' },
+    },
   ],
 });
