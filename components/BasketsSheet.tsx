@@ -87,7 +87,7 @@ export default function BasketsSheet({ open, onClose, onModify, onProceedToPayme
 
   if (!mounted) return null;
 
-  const baskets = session.baskets;
+  const baskets = session.baskets.filter((b) => b.items.length > 0);
 
   return (
     <>
