@@ -154,7 +154,7 @@ export async function getNodeChain(companyId: string, slugs: string[]): Promise<
   const chain: CompanyNode[] = [];
 
   for (const slug of slugs) {
-    const snap = await adminDb
+    const snap: FirebaseFirestore.QuerySnapshot = await adminDb
       .collection(`companies/${companyId}/nodes`)
       .where('slug', '==', slug)
       .where('parentId', '==', parentId)

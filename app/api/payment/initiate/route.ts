@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Resolve menu items to compute an accurate basket total
-  const menuSections = await getMenu()
+  const menuSections = await getMenu('demo-company', 'demo-branch')
   const menuItems = menuSections.flatMap((s) => s.items)
   const totalCents = Math.round(computeBasketTotal(basket, menuItems) * 100)
 

@@ -10,7 +10,7 @@ function fireSmsReceipt(basket: UserBasket, sessionId: string): void {
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
   void (async () => {
     try {
-      const menuSections = await getMenu()
+      const menuSections = await getMenu('demo-company', 'demo-branch')
       const menuItems = menuSections.flatMap((s) => s.items)
       const total = computeBasketTotal(basket, menuItems)
       await fetch(`${baseUrl}/api/receipts/sms`, {
