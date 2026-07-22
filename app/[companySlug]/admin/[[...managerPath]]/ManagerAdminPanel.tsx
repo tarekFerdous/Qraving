@@ -289,66 +289,45 @@ export default function ManagerAdminPanel({
   const isAddingTopLevel = addingParentId === managerNodeId;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 py-4">
-          <h1 className="text-base font-bold text-gray-900 leading-tight">{companyName}</h1>
-          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-            <span className="text-xs text-gray-400">{companyName}</span>
-            {ancestorLabels.map((label, i) => (
-              <span key={i} className="flex items-center gap-1.5">
-                <span className="text-xs text-gray-300">/</span>
-                <span className={`text-xs ${i === ancestorLabels.length - 1 ? 'font-medium text-gray-700' : 'text-gray-400'}`}>
-                  {label}
-                </span>
-              </span>
-            ))}
-          </div>
+    <div className="bg-white rounded-2xl border border-gray-200 p-5">
+      <h2 className="text-sm font-semibold text-gray-700 mb-4">{topLayerLabel}</h2>
+
+      <div>{topLevelNodes.map((node) => renderNode(node))}</div>
+
+      {isAddingTopLevel ? (
+        <div className="mt-3 flex items-center gap-2">
+          <input
+            type="text"
+            value={addingLabel}
+            onChange={(e) => setAddingLabel(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleAdd();
+              if (e.key === 'Escape') hideAddForm();
+            }}
+            placeholder={`${topLayerLabel} name`}
+            autoFocus
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
+          />
+          <button
+            onClick={handleAdd}
+            disabled={saving || !addingLabel.trim()}
+            className="px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:opacity-60"
+          >
+            Save
+          </button>
+          <button onClick={hideAddForm} className="p-1.5 text-gray-400 hover:text-gray-700">
+            <X size={14} />
+          </button>
         </div>
-      </header>
-
-      <main className="max-w-2xl mx-auto px-4 py-6">
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">{topLayerLabel}</h2>
-
-          <div>{topLevelNodes.map((node) => renderNode(node))}</div>
-
-          {isAddingTopLevel ? (
-            <div className="mt-3 flex items-center gap-2">
-              <input
-                type="text"
-                value={addingLabel}
-                onChange={(e) => setAddingLabel(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleAdd();
-                  if (e.key === 'Escape') hideAddForm();
-                }}
-                placeholder={`${topLayerLabel} name`}
-                autoFocus
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
-              />
-              <button
-                onClick={handleAdd}
-                disabled={saving || !addingLabel.trim()}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:opacity-60"
-              >
-                Save
-              </button>
-              <button onClick={hideAddForm} className="p-1.5 text-gray-400 hover:text-gray-700">
-                <X size={14} />
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => showAddForm(managerNodeId, firstLeafLayerIndex)}
-              className="mt-4 flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors"
-            >
-              <Plus size={14} />
-              Add {topLayerLabel}
-            </button>
-          )}
-        </div>
-      </main>
+      ) : (
+        <button
+          onClick={() => showAddForm(managerNodeId, firstLeafLayerIndex)}
+          className="mt-4 flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors"
+        >
+          <Plus size={14} />
+          Add {topLayerLabel}
+        </button>
+      )}
     </div>
   );
 }

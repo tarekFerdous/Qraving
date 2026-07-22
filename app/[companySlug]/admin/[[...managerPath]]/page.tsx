@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import { requireRole } from '@/lib/auth-server';
 import { getCompanyBySlug, getNodeChain, getDescendantNodes, resolveBranchNode } from '@/lib/company';
 import ManagerAdminPanel from './ManagerAdminPanel';
+import AdminShell from './AdminShell';
 
 type Props = {
   params: Promise<{ companySlug: string; managerPath?: string[] }>;
@@ -85,9 +86,12 @@ export default async function ManagerAdminPage({ params }: Props) {
   const serializedDescendants = descendants.map(({ createdAt, ...node }) => node);
 
   return (
-    <ManagerAdminPanel
+    <AdminShell
+      companySlug={companySlug}
       companyId={company.id}
+      branchId={branchId}
       companyName={company.name}
+      branchName={managerNode.label}
       layers={company.layers}
       managerNodeId={managerNode.id}
       ancestorLabels={[managerNode.label]}

@@ -42,6 +42,10 @@ vi.mock('./ManagerAdminPanel', () => ({
   default: (props: unknown) => ({ __mockPanel: true, props }),
 }));
 
+vi.mock('./AdminShell', () => ({
+  default: (props: unknown) => ({ __mockShell: true, props }),
+}));
+
 import ManagerAdminPage from './page';
 
 const company = {
@@ -75,7 +79,7 @@ describe('ManagerAdminPage ([[...managerPath]])', () => {
     );
   });
 
-  it('manager: zero path segments resolves own branch via resolveBranchNode and renders panel', async () => {
+  it('manager: zero path segments resolves own branch via resolveBranchNode and renders the AdminShell with resolved props', async () => {
     mockRequireRole.mockImplementation(async (role: string) => {
       if (role === 'manager') {
         return { uid: 'm1', email: 'm@x.com', companyId: 'company-1', branchId: 'branch-1' };
@@ -86,14 +90,32 @@ describe('ManagerAdminPage ([[...managerPath]])', () => {
       status: 'ok',
       node: { id: 'branch-1', parentId: null, label: 'Downtown', slug: 'downtown', depth: 0, isLeaf: false, qrCode: null, fullPath: null, active: true, createdAt: null },
     });
+    const descendants = [
+      { id: 'leaf-1', parentId: 'branch-1', label: 'Table 1', slug: 'table-1', depth: 1, isLeaf: true, qrCode: null, fullPath: null, active: true, createdAt: null },
+    ];
+    mockGetDescendantNodes.mockResolvedValue(descendants);
 
     const result: any = await ManagerAdminPage({ params: makeParams('test-co', undefined) });
 
     expect(mockResolveBranchNode).toHaveBeenCalledWith('company-1', 'branch-1');
     expect(mockGetNodeChain).not.toHaveBeenCalled();
+    expect(mockNotFound).not.toHaveBeenCalled();
+
+    // Manager branch now renders the shared AdminShell (not ManagerAdminPanel directly),
+    // with the resolved companyId/branchId/company fields/descendants passed down as props.
+    expect(result.type).toBeInstanceOf(Function);
+    expect(result.props.companyId).toBe('company-1');
+    expect(result.props.branchId).toBe('branch-1');
+    expect(result.props.companyName).toBe('Test Co');
+    expect(result.props.branchName).toBe('Downtown');
+    expect(result.props.layers).toEqual(company.layers);
     expect(result.props.managerNodeId).toBe('branch-1');
     expect(result.props.ancestorLabels).toEqual(['Downtown']);
-    expect(mockNotFound).not.toHaveBeenCalled();
+    expect(result.props.initialDescendants).toEqual(
+      descendants.map(({ createdAt, ...node }) => node),
+    );
+    expect(result.props.firstLeafLayerIndex).toBe(1);
+    expect(result.props.companySlug).toBe('test-co');
   });
 
   it('manager: any extra path segment triggers notFound (not their own panel)', async () => {
