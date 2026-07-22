@@ -33,6 +33,7 @@ vi.mock('@/lib/auth', () => ({
 // mocking pattern already used in page.test.ts.
 vi.mock('./ManagerAdminPanel', () => ({
   default: () => <div data-testid="structure-panel-content">Structure Panel Content</div>,
+  STRUCTURE_EXPANDED_STORAGE_PREFIX: 'qraving-structure-expanded-',
 }));
 
 // The Menu tab's full category/item editor behavior (publish toggle, category
@@ -82,6 +83,7 @@ function getPanel(tab: 'dashboard' | 'menu' | 'structure') {
 beforeEach(() => {
   vi.clearAllMocks();
   setSearch('');
+  window.localStorage.clear();
 });
 
 afterEach(() => {
@@ -172,5 +174,23 @@ describe('AdminShell', () => {
       expect(mockSignOut).toHaveBeenCalledWith({});
       expect(mockReplace).toHaveBeenCalledWith('/test-co/login');
     });
+  });
+
+  it("sign-out clears the Structure tab's saved collapse-state localStorage entries", async () => {
+    window.localStorage.setItem('qraving-structure-expanded-company-1', JSON.stringify({ 'area-1': false }));
+    window.localStorage.setItem('qraving-structure-expanded-company-2', JSON.stringify({ 'area-9': false }));
+    window.localStorage.setItem('some-unrelated-key', 'keep-me');
+
+    render(<AdminShell {...baseProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+
+    await waitFor(() => {
+      expect(mockSignOut).toHaveBeenCalled();
+    });
+
+    expect(window.localStorage.getItem('qraving-structure-expanded-company-1')).toBeNull();
+    expect(window.localStorage.getItem('qraving-structure-expanded-company-2')).toBeNull();
+    expect(window.localStorage.getItem('some-unrelated-key')).toBe('keep-me');
   });
 });

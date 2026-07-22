@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { Download, RefreshCw, PowerOff, Plus, X, Check, QrCode } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Download, RefreshCw, PowerOff, Plus, X, Check, QrCode, ChevronDown, ChevronRight } from 'lucide-react';
 import type { LayerConfig, CompanyNode } from '@/lib/company';
+
+export const STRUCTURE_EXPANDED_STORAGE_PREFIX = 'qraving-structure-expanded-';
 
 interface NodeWithQR extends Omit<CompanyNode, 'createdAt'> {
   qrDataUrl?: string;
@@ -35,6 +37,33 @@ export default function ManagerAdminPanel({
   const [addingLabel, setAddingLabel] = useState('');
   const [saving, setSaving] = useState(false);
   const [confirmRegenId, setConfirmRegenId] = useState<string | null>(null);
+
+  const storageKey = `${STRUCTURE_EXPANDED_STORAGE_PREFIX}${companyId}`;
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(expandedIds));
+    } catch {
+      // localStorage unavailable (e.g. private browsing) — collapse state just won't persist
+    }
+  }, [expandedIds, storageKey]);
+
+  function isExpanded(id: string): boolean {
+    return expandedIds[id] !== false;
+  }
+
+  function toggleExpanded(id: string) {
+    setExpandedIds((prev) => ({ ...prev, [id]: !isExpanded(id) }));
+  }
 
   const lastLayerIndex = layers.length - 1;
 
@@ -143,16 +172,31 @@ export default function ManagerAdminPanel({
     const nextLayerLabel = layers[nextDepth]?.label;
     const isDeepestLeaf = node.depth >= lastLayerIndex;
     const isAddingHere = addingParentId === node.id;
+    const expanded = isDeepestLeaf ? true : isExpanded(node.id);
 
     return (
       <div key={node.id} className="border border-gray-200 rounded-xl overflow-hidden mb-3">
-        <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
-          <div className="min-w-0">
+        <div
+          className={`flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100 ${
+            isDeepestLeaf ? '' : 'cursor-pointer'
+          }`}
+          onClick={isDeepestLeaf ? undefined : () => toggleExpanded(node.id)}
+        >
+          <div className="min-w-0 flex items-center gap-1.5">
+            {!isDeepestLeaf &&
+              (expanded ? (
+                <ChevronDown size={14} className="text-gray-400 shrink-0" />
+              ) : (
+                <ChevronRight size={14} className="text-gray-400 shrink-0" />
+              ))}
             <span className="text-sm font-medium text-gray-900">{node.label}</span>
             <span className="ml-2 text-xs text-gray-400">/{node.slug}</span>
           </div>
           <button
-            onClick={() => handleDeactivate(node.id)}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDeactivate(node.id);
+            }}
             className="ml-2 shrink-0 p-1.5 text-gray-300 hover:text-red-500 transition-colors"
             title="Deactivate"
           >
@@ -160,7 +204,8 @@ export default function ManagerAdminPanel({
           </button>
         </div>
 
-        <div className="px-4 py-3 space-y-3">
+        {(isDeepestLeaf || expanded) && (
+          <div className="px-4 py-3 space-y-3">
           {isDeepestLeaf && (
             <div>
               {node.qrCode ? (
@@ -280,6 +325,7 @@ export default function ManagerAdminPanel({
             </div>
           )}
         </div>
+        )}
       </div>
     );
   }

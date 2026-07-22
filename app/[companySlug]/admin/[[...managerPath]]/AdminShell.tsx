@@ -5,7 +5,7 @@ import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase-client';
 import { clearFirebaseTokenCookie } from '@/lib/auth';
 import type { LayerConfig, CompanyNode } from '@/lib/company';
-import ManagerAdminPanel from './ManagerAdminPanel';
+import ManagerAdminPanel, { STRUCTURE_EXPANDED_STORAGE_PREFIX } from './ManagerAdminPanel';
 import DashboardTab from './DashboardTab';
 import MenuTab from './MenuTab';
 
@@ -53,8 +53,20 @@ export default function AdminShell({
     router.replace(`/${companySlug}/admin?${params.toString()}`, { scroll: false });
   }
 
+  function clearStructureCollapseState() {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith(STRUCTURE_EXPANDED_STORAGE_PREFIX)) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+  }
+
   async function handleSignOut() {
     clearFirebaseTokenCookie();
+    clearStructureCollapseState();
     await signOut(auth);
     router.replace(`/${companySlug}/login`);
   }
