@@ -212,3 +212,86 @@ describe('ManagerAdminPanel — Structure tab collapse/expand', () => {
     expect(screen.getByText('Table 1')).toBeTruthy();
   });
 });
+
+describe('ManagerAdminPanel — auto-computed QR card for already-provisioned tables', () => {
+  it('a leaf node with a persisted qrCode/fullPath but no qrDataUrl in state renders the full QR card without any network call', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <ManagerAdminPanel
+        {...baseProps}
+        initialDescendants={makeDescendants({
+          qrCode: 'abc123',
+          fullPath: '/test-co/area-1/table-1/abc123',
+        })}
+      />,
+    );
+
+    // Starts (briefly) as the transient pill, then resolves to the full card once the
+    // client-side QRCode.toDataURL computation finishes.
+    await waitFor(() => {
+      expect(screen.getByAltText('QR code')).toBeTruthy();
+    });
+
+    expect(screen.getByText('Download PNG')).toBeTruthy();
+    expect(screen.getByText('Regenerate')).toBeTruthy();
+    expect(screen.getByText(/test-co\/area-1\/table-1\/abc123/)).toBeTruthy();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a leaf node with no qrCode still shows Generate QR Code, unaffected', () => {
+    vi.stubGlobal('fetch', vi.fn());
+
+    render(<ManagerAdminPanel {...baseProps} initialDescendants={makeDescendants()} />);
+
+    expect(screen.getByText('Generate QR Code')).toBeTruthy();
+    expect(screen.queryByAltText('QR code')).toBeNull();
+  });
+
+  it('Regenerate still shows its confirm dialog and still calls the mutating generate-qr fetch, unaffected', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        fullPath: '/test-co/area-1/table-1/def456',
+        publicUrl: 'https://example.com/test-co/area-1/table-1/def456',
+        qrDataUrl: 'data:image/png;base64,regenerated',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <ManagerAdminPanel
+        {...baseProps}
+        initialDescendants={makeDescendants({
+          qrCode: 'abc123',
+          fullPath: '/test-co/area-1/table-1/abc123',
+        })}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByAltText('QR code')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('Regenerate'));
+    expect(screen.getByText(/Are you sure\?/)).toBeTruthy();
+
+    fireEvent.click(screen.getByText('Confirm'));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/admin/companies/company-1/nodes/table-1',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ action: 'generate-qr' }),
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect((screen.getByAltText('QR code') as HTMLImageElement).src).toContain('regenerated');
+    });
+  });
+});

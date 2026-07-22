@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Download, RefreshCw, PowerOff, Plus, X, Check, QrCode, ChevronDown, ChevronRight } from 'lucide-react';
+import QRCode from 'qrcode';
 import type { LayerConfig, CompanyNode } from '@/lib/company';
 
 export const STRUCTURE_EXPANDED_STORAGE_PREFIX = 'qraving-structure-expanded-';
@@ -56,6 +57,44 @@ export default function ManagerAdminPanel({
       // localStorage unavailable (e.g. private browsing) — collapse state just won't persist
     }
   }, [expandedIds, storageKey]);
+
+  // Any Table (deepest-leaf) node that already has a persisted qrCode/fullPath but
+  // hasn't had its qrDataUrl computed yet in this session's state should render its
+  // full QR card immediately, not just after Generate/Regenerate has been clicked.
+  // This is a pure client-side re-render of the same QR image the server already
+  // generated — no network call, no Firestore write, no new short code minted.
+  useEffect(() => {
+    const deepestLayerIndex = layers.length - 1;
+    const targets = (initialDescendants as NodeWithQR[]).filter(
+      (n) => n.depth >= deepestLayerIndex && n.qrCode && n.fullPath && !n.qrDataUrl,
+    );
+    if (targets.length === 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      const results = await Promise.all(
+        targets.map(async (n) => {
+          const publicUrl = window.location.origin + n.fullPath;
+          const qrDataUrl = await QRCode.toDataURL(publicUrl, { width: 400, margin: 2 });
+          return { id: n.id, qrDataUrl, publicUrl };
+        }),
+      );
+
+      if (cancelled) return;
+
+      setNodes((prev) =>
+        prev.map((n) => {
+          const match = results.find((r) => r.id === n.id);
+          return match && !n.qrDataUrl ? { ...n, qrDataUrl: match.qrDataUrl, publicUrl: match.publicUrl } : n;
+        }),
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialDescendants, layers]);
 
   function isExpanded(id: string): boolean {
     return expandedIds[id] !== false;
