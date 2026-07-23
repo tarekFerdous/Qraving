@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'next/navigation';
-import { Download, RefreshCw, ChevronDown, ChevronRight, Plus, PowerOff } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import { Download, RefreshCw, ChevronDown, ChevronRight, Plus, PowerOff, Ban } from 'lucide-react';
 import type { Company, CompanyNode } from '@/lib/company';
 import { CompanyLogoSection } from '@/components/admin/CompanyLogoSection';
 
@@ -182,6 +182,7 @@ interface AddNodeModal {
 
 export default function CompanyDetailPage() {
   const { companyId } = useParams<{ companyId: string }>();
+  const router = useRouter();
   const [company, setCompany] = useState<Company | null>(null);
   const [nodes, setNodes] = useState<NodeWithQR[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,6 +190,10 @@ export default function CompanyDetailPage() {
   const [addModal, setAddModal] = useState<AddNodeModal | null>(null);
   const [newNodeLabel, setNewNodeLabel] = useState('');
   const [addingNode, setAddingNode] = useState(false);
+  const [deactivateModalOpen, setDeactivateModalOpen] = useState(false);
+  const [deactivateChoice, setDeactivateChoice] = useState<'soft' | 'hard' | null>(null);
+  const [deactivating, setDeactivating] = useState(false);
+  const [deactivateError, setDeactivateError] = useState('');
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/admin/companies/${companyId}`, { credentials: 'include' });
@@ -264,6 +269,45 @@ export default function CompanyDetailPage() {
     setNodes((prev) => prev.filter((n) => n.id !== nodeId));
   }
 
+  function closeDeactivateCompanyModal() {
+    setDeactivateModalOpen(false);
+    setDeactivateChoice(null);
+    setDeactivateError('');
+  }
+
+  async function handleConfirmDeactivateCompany() {
+    if (!deactivateChoice) return;
+    setDeactivating(true);
+    setDeactivateError('');
+
+    try {
+      const res =
+        deactivateChoice === 'soft'
+          ? await fetch(`/api/admin/companies/${companyId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ action: 'lock' }),
+            })
+          : await fetch(`/api/admin/companies/${companyId}`, {
+              method: 'DELETE',
+              credentials: 'include',
+            });
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setDeactivateError(data.error ?? 'Something went wrong. Please try again.');
+        setDeactivating(false);
+        return;
+      }
+
+      router.push('/qraving-admin-panel');
+    } catch {
+      setDeactivateError('Network error. Please try again.');
+      setDeactivating(false);
+    }
+  }
+
   if (loading) return <div className="text-sm text-gray-500">Loading…</div>;
   if (loadError) return <div className="text-sm text-red-500">{loadError}</div>;
   if (!company) return null;
@@ -277,9 +321,19 @@ export default function CompanyDetailPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">{company.name}</h1>
-        <p className="text-sm text-gray-400 mt-0.5">/{company.slug}</p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">{company.name}</h1>
+          <p className="text-sm text-gray-400 mt-0.5">/{company.slug}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setDeactivateModalOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors shrink-0"
+        >
+          <Ban size={14} />
+          Deactivate
+        </button>
       </div>
 
       <CompanyLogoSection
@@ -361,6 +415,76 @@ export default function CompanyDetailPage() {
               >
                 {addingNode ? 'Adding…' : 'Add'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deactivateModalOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-96 shadow-xl">
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">Deactivate company</h3>
+            <p className="text-xs text-gray-400 mb-4">Choose how you want to deactivate {company.name}.</p>
+
+            <div className="space-y-2 mb-4">
+              <button
+                type="button"
+                onClick={() => setDeactivateChoice('soft')}
+                className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                  deactivateChoice === 'soft' ? 'border-amber-400 bg-amber-50' : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <p className="text-sm font-medium text-gray-900">Soft Delete</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Locks the company. Public pages and manager logins are blocked. Fully reversible via Restore.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDeactivateChoice('hard')}
+                className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                  deactivateChoice === 'hard' ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <p className="text-sm font-medium text-gray-900">Hard Delete</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Permanently deletes everything — company data, managers, and storage assets. Cannot be undone.
+                </p>
+              </button>
+            </div>
+
+            {deactivateError && (
+              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
+                {deactivateError}
+              </p>
+            )}
+
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={closeDeactivateCompanyModal}
+                disabled={deactivating}
+                className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              {deactivateChoice && (
+                <button
+                  type="button"
+                  onClick={handleConfirmDeactivateCompany}
+                  disabled={deactivating}
+                  className={`px-3 py-1.5 text-sm font-medium text-white rounded-lg disabled:opacity-60 ${
+                    deactivateChoice === 'soft' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-red-600 hover:bg-red-700'
+                  }`}
+                >
+                  {deactivating
+                    ? 'Working…'
+                    : deactivateChoice === 'soft'
+                    ? 'Yes, soft delete this company'
+                    : 'Yes, permanently delete this company'}
+                </button>
+              )}
             </div>
           </div>
         </div>

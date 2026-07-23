@@ -1,5 +1,7 @@
 import { adminDb } from '@/lib/firebase-admin';
 import { Timestamp, FieldValue } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
+import { getStorage } from 'firebase-admin/storage';
 import { randomBytes } from 'crypto';
 
 export interface LayerConfig {
@@ -16,6 +18,7 @@ export interface Company {
   managerLayerIndex: number;
   createdAt: Timestamp;
   logoUrl?: string;
+  locked?: boolean;
 }
 
 export interface CompanyNode {
@@ -81,6 +84,88 @@ export async function setCompanyLogo(companyId: string, logoUrl: string): Promis
 
 export async function clearCompanyLogo(companyId: string): Promise<void> {
   await adminDb.doc(`companies/${companyId}`).update({ logoUrl: FieldValue.delete() });
+}
+
+export async function lockCompany(companyId: string): Promise<void> {
+  await adminDb.doc(`companies/${companyId}`).update({ locked: true });
+
+  const usersSnap = await adminDb
+    .collection('users')
+    .where('companyId', '==', companyId)
+    .where('role', '==', 'manager')
+    .get();
+
+  const auth = getAuth();
+
+  await Promise.all(
+    usersSnap.docs.map(async (userDoc) => {
+      let disabled = false;
+      try {
+        const fbUser = await auth.getUser(userDoc.id);
+        disabled = fbUser.disabled;
+      } catch {
+        // If we can't find/reach the Auth account, treat as already disabled/skip.
+        disabled = true;
+      }
+
+      // Managers already individually deactivated are left untouched — no marker, no state change.
+      if (disabled) return;
+
+      await auth.updateUser(userDoc.id, { disabled: true });
+      await userDoc.ref.update({ autoDisabledByCompanyLock: true });
+    }),
+  );
+}
+
+export async function restoreCompany(companyId: string): Promise<void> {
+  await adminDb.doc(`companies/${companyId}`).update({ locked: false });
+
+  const usersSnap = await adminDb
+    .collection('users')
+    .where('companyId', '==', companyId)
+    .where('autoDisabledByCompanyLock', '==', true)
+    .get();
+
+  const auth = getAuth();
+
+  await Promise.all(
+    usersSnap.docs.map(async (userDoc) => {
+      await auth.updateUser(userDoc.id, { disabled: false });
+      await userDoc.ref.update({ autoDisabledByCompanyLock: FieldValue.delete() });
+    }),
+  );
+}
+
+/**
+ * Irreversibly purge a company: every manager's Firebase Auth account and
+ * `users` doc, every Storage object under `companies/{companyId}/` (logo +
+ * menu item images), and the company document with all its Firestore
+ * subcollections (nodes/branches, sessions, baskets, orders).
+ */
+export async function hardDeleteCompany(companyId: string): Promise<void> {
+  const usersSnap = await adminDb
+    .collection('users')
+    .where('companyId', '==', companyId)
+    .get();
+
+  const auth = getAuth();
+
+  await Promise.all(
+    usersSnap.docs.map(async (userDoc) => {
+      try {
+        await auth.deleteUser(userDoc.id);
+      } catch {
+        // Auth account may already be gone — proceed with doc cleanup regardless.
+      }
+      await userDoc.ref.delete();
+    }),
+  );
+
+  const bucket = getStorage().bucket(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET);
+  await bucket.deleteFiles({ prefix: `companies/${companyId}/` });
+
+  const companyRef = adminDb.doc(`companies/${companyId}`);
+  await adminDb.recursiveDelete(companyRef);
 }
 
 export async function getNodes(companyId: string): Promise<CompanyNode[]> {

@@ -24,6 +24,10 @@ export default async function ManagerAdminPage({ params }: Props) {
     redirect(`/${companySlug}/login`);
   }
 
+  if (company.locked) {
+    redirect(`/${companySlug}/login`);
+  }
+
   if (superadminAuth) {
     const nodeChain = await getNodeChain(company.id, pathSegments);
     if (nodeChain.length === 0) {

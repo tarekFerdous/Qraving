@@ -13,6 +13,7 @@ export default function ManagerLoginPage() {
   const companySlug = params.companySlug as string;
 
   const [companyName, setCompanyName] = useState('');
+  const [companyLocked, setCompanyLocked] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -22,7 +23,9 @@ export default function ManagerLoginPage() {
     async function loadCompany() {
       const snap = await getDocs(query(collection(db, 'companies'), where('slug', '==', companySlug)));
       if (!snap.empty) {
-        setCompanyName(snap.docs[0].data().name as string);
+        const data = snap.docs[0].data();
+        setCompanyName(data.name as string);
+        setCompanyLocked(Boolean(data.locked));
       }
     }
     loadCompany();
@@ -33,16 +36,22 @@ export default function ManagerLoginPage() {
       if (!user) return;
       const userDoc = await getDoc(doc(db, `users/${user.uid}`));
       const data = userDoc.data();
-      if (data?.role === 'manager' && data?.companySlug === companySlug) {
+      if (data?.role === 'manager' && data?.companySlug === companySlug && !companyLocked) {
         router.replace(`/${companySlug}/admin`);
       }
     });
     return unsubscribe;
-  }, [companySlug, router]);
+  }, [companySlug, router, companyLocked]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+
+    if (companyLocked) {
+      setError('This company is currently unavailable.');
+      return;
+    }
+
     setLoading(true);
 
     try {

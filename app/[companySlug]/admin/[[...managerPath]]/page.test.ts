@@ -79,6 +79,21 @@ describe('ManagerAdminPage ([[...managerPath]])', () => {
     );
   });
 
+  it('redirects to login when the company is locked, regardless of role, before any node resolution', async () => {
+    mockRequireRole.mockImplementation(async (role: string) => {
+      if (role === 'superadmin') return { uid: 's1', email: 's@x.com' };
+      return null;
+    });
+    mockGetCompanyBySlug.mockResolvedValue({ ...company, locked: true });
+
+    await expect(ManagerAdminPage({ params: makeParams('test-co', []) })).rejects.toThrow(
+      'REDIRECT:/test-co/login',
+    );
+
+    expect(mockGetNodeChain).not.toHaveBeenCalled();
+    expect(mockResolveBranchNode).not.toHaveBeenCalled();
+  });
+
   it('manager: zero path segments resolves own branch via resolveBranchNode and renders the AdminShell with resolved props', async () => {
     mockRequireRole.mockImplementation(async (role: string) => {
       if (role === 'manager') {

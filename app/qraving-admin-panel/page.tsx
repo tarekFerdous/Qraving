@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { requireRole } from '@/lib/auth-server';
 import { getAllCompanies } from '@/lib/company';
+import { CompaniesList } from '@/components/admin/CompaniesList';
 
 export default async function AdminDashboardPage() {
   const auth = await requireRole('superadmin');
@@ -29,30 +30,7 @@ export default async function AdminDashboardPage() {
           </Link>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-          {companies.map((company) => (
-            <div key={company.id} className="flex items-center justify-between px-5 py-4">
-              <div>
-                <p className="text-sm font-medium text-gray-900">{company.name}</p>
-                <p className="text-xs text-gray-400 mt-0.5">/{company.slug}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Link
-                  href={`/qraving-admin-panel/companies/${company.id}/managers`}
-                  className="px-3 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Managers
-                </Link>
-                <Link
-                  href={`/qraving-admin-panel/companies/${company.id}`}
-                  className="px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-700 transition-colors"
-                >
-                  View
-                </Link>
-              </div>
-            </div>
-          ))}
-        </div>
+        <CompaniesList initialCompanies={companies} />
       )}
     </div>
   );
