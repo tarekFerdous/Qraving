@@ -72,8 +72,8 @@ export default function AdminShell({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+    <div className="h-dvh flex flex-col overflow-hidden bg-gray-50">
+      <header className="shrink-0 bg-white border-b border-gray-200">
         <div className="max-w-2xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
@@ -123,8 +123,12 @@ export default function AdminShell({
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-6">
-        <div data-tab-panel="dashboard" style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
+      <main className="flex-1 min-h-0">
+        <div
+          data-tab-panel="dashboard"
+          className="h-full overflow-y-auto max-w-2xl mx-auto px-4 py-6"
+          style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}
+        >
           <DashboardTab
             companyId={companyId}
             branchId={branchId}
@@ -133,11 +137,19 @@ export default function AdminShell({
           />
         </div>
 
-        <div data-tab-panel="menu" style={{ display: activeTab === 'menu' ? 'block' : 'none' }}>
+        <div
+          data-tab-panel="menu"
+          className="h-full overflow-y-auto max-w-2xl mx-auto px-4 py-6"
+          style={{ display: activeTab === 'menu' ? 'block' : 'none' }}
+        >
           <MenuTab companyId={companyId} branchId={branchId} />
         </div>
 
-        <div data-tab-panel="structure" style={{ display: activeTab === 'structure' ? 'block' : 'none' }}>
+        <div
+          data-tab-panel="structure"
+          className="h-full overflow-y-auto max-w-2xl mx-auto px-4 py-6"
+          style={{ display: activeTab === 'structure' ? 'block' : 'none' }}
+        >
           <ManagerAdminPanel
             companyId={companyId}
             companyName={companyName}
