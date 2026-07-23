@@ -1,5 +1,5 @@
 import { adminDb } from '@/lib/firebase-admin';
-import { Timestamp } from 'firebase-admin/firestore';
+import { Timestamp, FieldValue } from 'firebase-admin/firestore';
 import { randomBytes } from 'crypto';
 
 export interface LayerConfig {
@@ -15,6 +15,7 @@ export interface Company {
   layers: LayerConfig[];
   managerLayerIndex: number;
   createdAt: Timestamp;
+  logoUrl?: string;
 }
 
 export interface CompanyNode {
@@ -72,6 +73,14 @@ export async function getCompany(companyId: string): Promise<Company | null> {
 export async function getAllCompanies(): Promise<Company[]> {
   const snap = await adminDb.collection('companies').orderBy('createdAt', 'desc').get();
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Company, 'id'>) }));
+}
+
+export async function setCompanyLogo(companyId: string, logoUrl: string): Promise<void> {
+  await adminDb.doc(`companies/${companyId}`).update({ logoUrl });
+}
+
+export async function clearCompanyLogo(companyId: string): Promise<void> {
+  await adminDb.doc(`companies/${companyId}`).update({ logoUrl: FieldValue.delete() });
 }
 
 export async function getNodes(companyId: string): Promise<CompanyNode[]> {

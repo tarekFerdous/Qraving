@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Download, RefreshCw, ChevronDown, ChevronRight, Plus, PowerOff } from 'lucide-react';
 import type { Company, CompanyNode } from '@/lib/company';
+import { CompanyLogoSection } from '@/components/admin/CompanyLogoSection';
 
 interface NodeWithQR extends CompanyNode {
   qrDataUrl?: string;
@@ -280,6 +281,12 @@ export default function CompanyDetailPage() {
         <h1 className="text-xl font-semibold text-gray-900">{company.name}</h1>
         <p className="text-sm text-gray-400 mt-0.5">/{company.slug}</p>
       </div>
+
+      <CompanyLogoSection
+        companyId={companyId}
+        logoUrl={company.logoUrl}
+        onLogoChange={(logoUrl) => setCompany((prev) => (prev ? { ...prev, logoUrl } : prev))}
+      />
 
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <div className="flex items-center justify-between mb-4">

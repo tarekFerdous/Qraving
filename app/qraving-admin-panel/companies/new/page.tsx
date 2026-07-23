@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Trash2, Plus, Leaf } from 'lucide-react';
+import { CompanyLogoSection } from '@/components/admin/CompanyLogoSection';
 
 function toSlug(name: string): string {
   return name
@@ -39,6 +40,8 @@ export default function NewCompanyPage() {
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [createdCompanyId, setCreatedCompanyId] = useState<string | null>(null);
+  const [createdLogoUrl, setCreatedLogoUrl] = useState<string | undefined>(undefined);
 
   function handleNameChange(value: string) {
     setName(value);
@@ -152,11 +155,39 @@ export default function NewCompanyPage() {
         return;
       }
 
-      router.push(`/qraving-admin-panel/companies/${data.companyId}`);
+      setCreatedCompanyId(data.companyId ?? null);
+      setSubmitting(false);
     } catch {
       setError('Network error. Please try again.');
       setSubmitting(false);
     }
+  }
+
+  if (createdCompanyId) {
+    return (
+      <div className="max-w-lg">
+        <h1 className="text-xl font-semibold text-gray-900 mb-1">Company created</h1>
+        <p className="text-sm text-gray-500 mb-6">
+          Optionally upload a logo now, or skip and add one later from the company page.
+        </p>
+
+        <CompanyLogoSection
+          companyId={createdCompanyId}
+          logoUrl={createdLogoUrl}
+          onLogoChange={setCreatedLogoUrl}
+        />
+
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => router.push(`/qraving-admin-panel/companies/${createdCompanyId}`)}
+            className="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-700 transition-colors"
+          >
+            {createdLogoUrl ? 'Continue' : 'Skip for now'}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

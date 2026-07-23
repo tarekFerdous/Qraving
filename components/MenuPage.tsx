@@ -18,9 +18,11 @@ interface MenuPageProps {
   sections: MenuSection[];
   company: string;
   branch: string;
+  companyName: string;
+  logoUrl?: string;
 }
 
-export default function MenuPage({ sections, company, branch }: MenuPageProps) {
+export default function MenuPage({ sections, company, branch, companyName, logoUrl }: MenuPageProps) {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [logoError, setLogoError] = useState(false);
   const [basketsOpen, setBasketsOpen] = useState(false);
@@ -94,21 +96,21 @@ export default function MenuPage({ sections, company, branch }: MenuPageProps) {
           <span className="font-bold text-xl shrink-0 text-qraving-red">
             Qraving
           </span>
-          <span className="text-gray-400 font-medium shrink-0">-</span>
-          {logoError ? (
-            <span className="font-semibold text-gray-800 text-sm truncate">
-              Gordon&apos;s Kitchen
-            </span>
-          ) : (
+          <span className="text-gray-400 font-medium shrink-0">×</span>
+          {logoUrl && !logoError ? (
             <Image
-              src="/logos/gordons-kitchen.svg"
-              alt="Gordon's Kitchen"
+              src={logoUrl}
+              alt={companyName}
               width={160}
               height={28}
               className="h-7 w-auto max-w-[160px] object-contain"
               onError={() => setLogoError(true)}
               priority
             />
+          ) : (
+            <span className="font-bold text-xl text-gray-800 truncate">
+              {companyName}
+            </span>
           )}
         </div>
 

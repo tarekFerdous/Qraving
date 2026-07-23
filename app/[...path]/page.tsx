@@ -36,5 +36,13 @@ export default async function CatchAllPage({ params }: CatchAllPageProps) {
 
   const sections = await getMenu(companySlug, branch);
 
-  return <MenuPage sections={sections} company={companySlug} branch={branch} />;
+  return (
+    <MenuPage
+      sections={sections}
+      company={companySlug}
+      branch={branch}
+      companyName={company.name}
+      logoUrl={company.logoUrl}
+    />
+  );
 }
