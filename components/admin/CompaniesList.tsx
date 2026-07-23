@@ -4,8 +4,10 @@ import { useState } from 'react';
 import Link from 'next/link';
 import type { Company } from '@/lib/company';
 
-export function CompaniesList({ initialCompanies }: { initialCompanies: Company[] }) {
-  const [companies, setCompanies] = useState<Company[]>(initialCompanies);
+type CompanyListItem = Omit<Company, 'createdAt'>;
+
+export function CompaniesList({ initialCompanies }: { initialCompanies: CompanyListItem[] }) {
+  const [companies, setCompanies] = useState<CompanyListItem[]>(initialCompanies);
   const [restoringId, setRestoringId] = useState<string | null>(null);
 
   async function handleRestore(companyId: string) {

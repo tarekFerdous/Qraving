@@ -30,7 +30,9 @@ export default async function AdminDashboardPage() {
           </Link>
         </div>
       ) : (
-        <CompaniesList initialCompanies={companies} />
+        // Firestore Timestamps are class instances and can't cross the Server -> Client Component
+        // boundary; createdAt isn't used client-side, so drop it rather than serialize it.
+        <CompaniesList initialCompanies={companies.map(({ createdAt, ...c }) => c)} />
       )}
     </div>
   );
