@@ -49,3 +49,113 @@ export function isPaymentDeadlineExpired(session: Session): boolean {
   if (session.paymentDeadline === null) return false
   return Date.now() > new Date(session.paymentDeadline).getTime()
 }
+
+/**
+ * Computes what a given basket actually owes, redistributing the cost of
+ * shared items across their resolved sharer lists instead of leaving it
+ * entirely on the basket that physically added the item row.
+ *
+ * Walks every basket in the session (not just `basket.items`) because a
+ * shared item might have been added by a *different* basket that this
+ * basket is sharing the cost of. For each item found anywhere in the
+ * session:
+ *   - Not shared, or shared but not yet resolved (sharerIds === null): the
+ *     safe fallback is to treat it exactly like computeBasketTotal — full
+ *     price * quantity attributed only to the basket that physically holds
+ *     the item row. (In practice this function is only ever called once
+ *     every shared item on the basket has been resolved, since payment is
+ *     gated on that — but the pure function stays well-defined either way.)
+ *   - Shared and resolved: price * quantity is divided evenly across
+ *     item.sharerIds, and this basket's share is included only if its
+ *     userId appears in that resolved list.
+ *
+ * computeSessionTotal is unaffected by any of this — redistribution changes
+ * only per-basket allocation, never the whole-table sum.
+ */
+export function computeBasketDue(
+  basket: UserBasket,
+  session: Session,
+  menuItems: MenuItem[],
+): number {
+  return session.baskets.reduce((sessionSubtotal, owningBasket) => {
+    const basketSubtotal = owningBasket.items.reduce((itemSubtotal, item) => {
+      const menuItem = menuItems.find((m) => m.id === item.itemId)
+      const price = menuItem ? menuItem.price : 0
+      const itemCost = price * item.quantity
+
+      if (!item.isShared || item.sharerIds === null) {
+        // Not shared, or shared but unresolved: full cost stays on the
+        // basket that physically added it.
+        return owningBasket.userId === basket.userId ? itemSubtotal + itemCost : itemSubtotal
+      }
+
+      // Shared and resolved: split evenly across the resolved sharer list.
+      if (item.sharerIds.length === 0 || !item.sharerIds.includes(basket.userId)) {
+        return itemSubtotal
+      }
+      return itemSubtotal + itemCost / item.sharerIds.length
+    }, 0)
+    return sessionSubtotal + basketSubtotal
+  }, 0)
+}
+
+/**
+ * Returns true when 2 or more baskets in the session have items — i.e. more
+ * than one person could plausibly be paying serially on a single shared
+ * device passed around the table.
+ *
+ * Deliberately independent of session.paymentPlan / resolvePaymentMode: a
+ * whole-table 'single' payment plan can still have 2+ non-empty baskets (one
+ * person covering everyone), and a shared-device confirm gate is still
+ * exactly the right guard in that case. resolvePaymentMode answers "how
+ * should this session be charged"; this answers "could this device be
+ * passed between people mid-checkout" — the raw basket-count check happens
+ * to be the same threshold, but the two questions are not the same question,
+ * so this is kept as its own named predicate rather than reused via
+ * effectivePlan/isSplit.
+ */
+export function isSharedDevicePayment(session: Session): boolean {
+  return session.baskets.filter((b) => b.items.length > 0).length > 1
+}
+
+/**
+ * Resolves a possibly-relative redirect URL into a fully-qualified absolute
+ * URL, using `origin` as the base when the URL has no scheme of its own.
+ *
+ * Needed because /api/payment/initiate's test-mode sentinel redirectUrl
+ * (used whenever HELCIM_API_KEY isn't configured) is a relative path like
+ * '/api/payment/interac-callback?sessionId=...&basketId=...&result=APPROVED'
+ * — fine for an on-device `window.location.href` redirect, but useless
+ * encoded into a QR code or link opened fresh on a different device, which
+ * has no origin to resolve a relative path against. A real Helcim redirect
+ * URL is already absolute (has a scheme) and is returned unchanged.
+ */
+export function resolveAbsoluteUrl(url: string, origin: string): string {
+  if (/^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(url)) {
+    // Already absolute (has a scheme) — return unchanged.
+    return url
+  }
+  return new URL(url, origin).toString()
+}
+
+/**
+ * Marks every non-empty basket (items.length > 0) as paid via a single shared
+ * Helcim transaction, used when session.paymentPlan === 'single' (one person
+ * covers the whole table). Every affected basket gets the same
+ * helcimTransactionId and paymentMethod, so a refund lookup can trace any
+ * basket back to the one covering transaction. Pure function — no I/O.
+ */
+export function applyWholeTablePayment(
+  session: Session,
+  transactionId: string,
+  paymentMethod: UserBasket['paymentMethod'],
+): Session {
+  return {
+    ...session,
+    baskets: session.baskets.map((basket) =>
+      basket.items.length > 0
+        ? { ...basket, paymentStatus: 'paid', paymentMethod, helcimTransactionId: transactionId }
+        : basket,
+    ),
+  }
+}

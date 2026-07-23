@@ -7,6 +7,9 @@ import {
   removeItem,
   updateItemQuantity,
   updateItemInstructions,
+  updateItemSharers,
+  hasUnresolvedSharedItems,
+  isSessionClosed,
 } from './session'
 import type { Session, UserBasket, BasketItem } from './session'
 
@@ -35,6 +38,20 @@ function makeItem(overrides: Partial<BasketItem> = {}): BasketItem {
     addOns: [],
     instructions: '',
     quantity: 1,
+    isShared: false,
+    sharerIds: null,
+    ...overrides,
+  }
+}
+
+function makeSession(overrides: Partial<Session> = {}): Session {
+  return {
+    id: 'sess-1',
+    userCounter: 0,
+    baskets: [],
+    orderStatus: 'building',
+    paymentDeadline: null,
+    paymentPlan: null,
     ...overrides,
   }
 }
@@ -52,6 +69,7 @@ describe('createSession', () => {
       baskets: [],
       orderStatus: 'building',
       paymentDeadline: null,
+      paymentPlan: null,
     })
   })
 })
@@ -296,5 +314,142 @@ describe('updateItemInstructions', () => {
     const basket = makeBasket({ items: [makeItem()] })
     const updated = updateItemInstructions(basket, 'item-1', 'no onions')
     expect(updated).not.toBe(basket)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// updateItemSharers
+// ---------------------------------------------------------------------------
+
+describe('updateItemSharers', () => {
+  it('sets sharerIds on the target item', () => {
+    const basket = makeBasket({
+      userId: 'u1',
+      items: [makeItem({ itemId: 'item-1', isShared: true, sharerIds: null })],
+    })
+    const updated = updateItemSharers(basket, 'item-1', ['u1', 'u2'])
+    expect(updated.items[0].sharerIds).toEqual(['u1', 'u2'])
+  })
+
+  it("always includes the basket's own userId even if omitted by the caller", () => {
+    const basket = makeBasket({
+      userId: 'u1',
+      items: [makeItem({ itemId: 'item-1', isShared: true, sharerIds: null })],
+    })
+    const updated = updateItemSharers(basket, 'item-1', ['u2', 'u3'])
+    expect(updated.items[0].sharerIds).toEqual(['u1', 'u2', 'u3'])
+  })
+
+  it("does not duplicate the basket's own userId when already included", () => {
+    const basket = makeBasket({
+      userId: 'u1',
+      items: [makeItem({ itemId: 'item-1', isShared: true, sharerIds: null })],
+    })
+    const updated = updateItemSharers(basket, 'item-1', ['u1', 'u2'])
+    expect(updated.items[0].sharerIds).toEqual(['u1', 'u2'])
+  })
+
+  it('leaves other items intact', () => {
+    const basket = makeBasket({
+      userId: 'u1',
+      items: [
+        makeItem({ itemId: 'item-1', isShared: true, sharerIds: null }),
+        makeItem({ itemId: 'item-2', isShared: false, sharerIds: null }),
+      ],
+    })
+    const updated = updateItemSharers(basket, 'item-1', ['u1', 'u2'])
+    expect(updated.items[1].sharerIds).toBeNull()
+  })
+
+  it('does not mutate the input basket', () => {
+    const basket = makeBasket({
+      userId: 'u1',
+      items: [makeItem({ itemId: 'item-1', isShared: true, sharerIds: null })],
+    })
+    updateItemSharers(basket, 'item-1', ['u1', 'u2'])
+    expect(basket.items[0].sharerIds).toBeNull()
+  })
+
+  it('returns a new basket object (pure)', () => {
+    const basket = makeBasket({
+      userId: 'u1',
+      items: [makeItem({ itemId: 'item-1', isShared: true, sharerIds: null })],
+    })
+    const updated = updateItemSharers(basket, 'item-1', ['u1'])
+    expect(updated).not.toBe(basket)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// hasUnresolvedSharedItems
+// ---------------------------------------------------------------------------
+
+describe('hasUnresolvedSharedItems', () => {
+  it('returns false for a basket with no items', () => {
+    const basket = makeBasket()
+    expect(hasUnresolvedSharedItems(basket)).toBe(false)
+  })
+
+  it('returns false when no items are shared', () => {
+    const basket = makeBasket({ items: [makeItem({ isShared: false })] })
+    expect(hasUnresolvedSharedItems(basket)).toBe(false)
+  })
+
+  it('returns true when a shared item has a null sharerIds', () => {
+    const basket = makeBasket({ items: [makeItem({ isShared: true, sharerIds: null })] })
+    expect(hasUnresolvedSharedItems(basket)).toBe(true)
+  })
+
+  it('returns false when a shared item has a resolved sharerIds', () => {
+    const basket = makeBasket({
+      items: [makeItem({ isShared: true, sharerIds: ['u1', 'u2'] })],
+    })
+    expect(hasUnresolvedSharedItems(basket)).toBe(false)
+  })
+
+  it('returns true when any one of multiple items is an unresolved shared item', () => {
+    const basket = makeBasket({
+      items: [
+        makeItem({ itemId: 'item-1', isShared: false }),
+        makeItem({ itemId: 'item-2', isShared: true, sharerIds: null }),
+      ],
+    })
+    expect(hasUnresolvedSharedItems(basket)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// isSessionClosed
+// ---------------------------------------------------------------------------
+
+describe('isSessionClosed', () => {
+  it('returns false for a freshly created session (building)', () => {
+    const session = createSession('s1')
+    expect(isSessionClosed(session)).toBe(false)
+  })
+
+  it('returns false when orderStatus is payment_pending', () => {
+    const session = makeSession({ orderStatus: 'payment_pending' })
+    expect(isSessionClosed(session)).toBe(false)
+  })
+
+  it('returns false when orderStatus is fully_paid', () => {
+    const session = makeSession({ orderStatus: 'fully_paid' })
+    expect(isSessionClosed(session)).toBe(false)
+  })
+
+  it('returns true when orderStatus is submitted', () => {
+    const session = makeSession({ orderStatus: 'submitted' })
+    expect(isSessionClosed(session)).toBe(true)
+  })
+
+  it('returns false when orderStatus is accepted', () => {
+    const session = makeSession({ orderStatus: 'accepted' })
+    expect(isSessionClosed(session)).toBe(false)
+  })
+
+  it('returns false when orderStatus is rejected', () => {
+    const session = makeSession({ orderStatus: 'rejected' })
+    expect(isSessionClosed(session)).toBe(false)
   })
 })

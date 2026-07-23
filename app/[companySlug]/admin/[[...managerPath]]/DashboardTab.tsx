@@ -12,6 +12,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase-client';
+import { isSessionClosed, type Session } from '@/lib/session';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,6 +80,7 @@ export default function DashboardTab({ companyId, branchId, companyName, branchN
   const [orders, setOrders] = useState<Order[]>([]);
   const [acceptingOrderId, setAcceptingOrderId] = useState<string | null>(null);
   const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
+  const [freeingSessionId, setFreeingSessionId] = useState<string | null>(null);
 
   // Active QR codes: nodes where active === true && qrCode !== null
   useEffect(() => {
@@ -97,7 +99,7 @@ export default function DashboardTab({ companyId, branchId, companyName, branchN
     if (!companyId || !branchId) return;
     const q = query(
       collection(db, `companies/${companyId}/branches/${branchId}/sessions`),
-      where('orderStatus', 'in', ['building', 'payment_pending']),
+      where('orderStatus', 'in', ['building', 'payment_pending', 'fully_paid']),
     );
     const unsub = onSnapshot(q, (snap) => {
       const docs: SessionDoc[] = snap.docs.map((d) => ({
@@ -150,6 +152,24 @@ export default function DashboardTab({ companyId, branchId, companyName, branchN
     }
   }
 
+  // Manual staff override (#163): force-close a session that was abandoned before
+  // payment completed, so the table can be reused without waiting on the 30-minute
+  // inactivity expiry. Reuses the exact same "closed" contract #159 established —
+  // orderStatus: 'submitted' — which the customer client already treats as terminal
+  // (isSessionClosed in lib/session.ts). Does not touch the inactivity expiry sweep.
+  async function freeTable(sessionId: string) {
+    if (!companyId || !branchId) return;
+    setFreeingSessionId(sessionId);
+    try {
+      await updateDoc(
+        doc(db, `companies/${companyId}/branches/${branchId}/sessions/${sessionId}`),
+        { orderStatus: 'submitted' },
+      );
+    } finally {
+      setFreeingSessionId(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Branch details card */}
@@ -186,30 +206,52 @@ export default function DashboardTab({ companyId, branchId, companyName, branchN
           <p className="text-sm text-gray-400">No active sessions right now.</p>
         ) : (
           <ul className="space-y-3">
-            {sessions.map((session) => (
-              <li
-                key={session.id}
-                className="flex items-center justify-between py-3 px-3 rounded-xl bg-gray-50 border border-gray-100"
-              >
-                <div>
-                  <p className="text-sm font-medium text-gray-900 font-mono">{session.id}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {session.userCounter ?? 0} member{session.userCounter !== 1 ? 's' : ''}
-                    {' · '}
-                    {formatRelativeTime(session.lastActivity)}
-                  </p>
-                </div>
-                <span
-                  className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                    session.orderStatus === 'payment_pending'
-                      ? 'bg-yellow-100 text-yellow-700'
-                      : 'bg-green-100 text-green-700'
-                  }`}
+            {sessions.map((session) => {
+              // Reuse #159's exact closed-session definition (orderStatus === 'submitted')
+              // to decide whether Free Table is still offered for this session.
+              const sessionIsClosed = isSessionClosed({ orderStatus: session.orderStatus } as Session);
+              return (
+                <li
+                  key={session.id}
+                  className="flex items-center justify-between py-3 px-3 rounded-xl bg-gray-50 border border-gray-100"
                 >
-                  {session.orderStatus === 'payment_pending' ? 'Paying' : 'Ordering'}
-                </span>
-              </li>
-            ))}
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 font-mono">{session.id}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {session.userCounter ?? 0} member{session.userCounter !== 1 ? 's' : ''}
+                      {' · '}
+                      {formatRelativeTime(session.lastActivity)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        session.orderStatus === 'payment_pending'
+                          ? 'bg-yellow-100 text-yellow-700'
+                          : session.orderStatus === 'fully_paid'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-green-100 text-green-700'
+                      }`}
+                    >
+                      {session.orderStatus === 'payment_pending'
+                        ? 'Paying'
+                        : session.orderStatus === 'fully_paid'
+                          ? 'Paid'
+                          : 'Ordering'}
+                    </span>
+                    {!sessionIsClosed && (
+                      <button
+                        onClick={() => freeTable(session.id)}
+                        disabled={freeingSessionId === session.id}
+                        className="rounded-lg border border-gray-300 text-gray-700 px-3 py-1.5 text-sm font-medium hover:bg-gray-100 transition-colors disabled:opacity-50"
+                      >
+                        {freeingSessionId === session.id ? 'Freeing…' : 'Free table'}
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

@@ -1,10 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
   computeBasketTotal,
+  computeBasketDue,
   computeSessionTotal,
   resolvePaymentMode,
   allBasketsPaid,
   isPaymentDeadlineExpired,
+  applyWholeTablePayment,
+  isSharedDevicePayment,
+  resolveAbsoluteUrl,
 } from './payment'
 import type { Session, UserBasket, BasketItem } from './session'
 import type { MenuItem } from './menu'
@@ -20,6 +24,7 @@ function makeSession(overrides: Partial<Session> = {}): Session {
     baskets: [],
     orderStatus: 'building',
     paymentDeadline: null,
+    paymentPlan: null,
     ...overrides,
   }
 }
@@ -45,6 +50,8 @@ function makeItem(overrides: Partial<BasketItem> = {}): BasketItem {
     addOns: [],
     instructions: '',
     quantity: 1,
+    isShared: false,
+    sharerIds: null,
     ...overrides,
   }
 }
@@ -158,6 +165,99 @@ describe('computeSessionTotal', () => {
     })
     // 1*5 + 2*5 + 3*5 = 30
     expect(computeSessionTotal(session, menuItems)).toBe(30)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// computeBasketDue
+// ---------------------------------------------------------------------------
+
+describe('computeBasketDue', () => {
+  it('matches computeBasketTotal when the basket has no shared items', () => {
+    const basket = makeBasket({
+      userId: 'u1',
+      items: [
+        makeItem({ itemId: 'item-1', quantity: 2 }),
+        makeItem({ itemId: 'item-2', quantity: 1 }),
+      ],
+    })
+    const menuItems = [
+      makeMenuItem({ id: 'item-1', price: 10 }),
+      makeMenuItem({ id: 'item-2', price: 15 }),
+    ]
+    const session = makeSession({ baskets: [basket] })
+
+    expect(computeBasketDue(basket, session, menuItems)).toBe(computeBasketTotal(basket, menuItems))
+    expect(computeBasketDue(basket, session, menuItems)).toBe(35)
+  })
+
+  it('splits one shared item evenly across 2 baskets and each basket still owes its own unshared items', () => {
+    const menuItems = [
+      makeMenuItem({ id: 'dessert', price: 20 }),
+      makeMenuItem({ id: 'burger', price: 10 }),
+    ]
+    const basket1 = makeBasket({
+      userId: 'u1',
+      items: [makeItem({ itemId: 'dessert', quantity: 1, isShared: true, sharerIds: ['u1', 'u2'] })],
+    })
+    const basket2 = makeBasket({
+      userId: 'u2',
+      items: [makeItem({ itemId: 'burger', quantity: 1, isShared: false })],
+    })
+    const session = makeSession({ baskets: [basket1, basket2] })
+
+    // basket1: 20 / 2 (its half of the shared dessert) = 10
+    expect(computeBasketDue(basket1, session, menuItems)).toBe(10)
+    // basket2: 20 / 2 (its half of the shared dessert) + 10 (its own burger) = 20
+    expect(computeBasketDue(basket2, session, menuItems)).toBe(20)
+    // Redistribution never changes the whole-table total.
+    expect(computeBasketDue(basket1, session, menuItems) + computeBasketDue(basket2, session, menuItems)).toBe(
+      computeSessionTotal(session, menuItems),
+    )
+  })
+
+  it('splits one shared item evenly across every basket in the session', () => {
+    const menuItems = [makeMenuItem({ id: 'dessert', price: 30 })]
+    const basket1 = makeBasket({
+      userId: 'u1',
+      items: [
+        makeItem({ itemId: 'dessert', quantity: 1, isShared: true, sharerIds: ['u1', 'u2', 'u3'] }),
+      ],
+    })
+    const basket2 = makeBasket({ userId: 'u2', items: [] })
+    const basket3 = makeBasket({ userId: 'u3', items: [] })
+    const session = makeSession({ baskets: [basket1, basket2, basket3] })
+
+    expect(computeBasketDue(basket1, session, menuItems)).toBe(10)
+    expect(computeBasketDue(basket2, session, menuItems)).toBe(10)
+    expect(computeBasketDue(basket3, session, menuItems)).toBe(10)
+    expect(computeSessionTotal(session, menuItems)).toBe(30)
+  })
+
+  it('excludes a basket from a shared item cost when it is not in the resolved sharer list', () => {
+    const menuItems = [makeMenuItem({ id: 'dessert', price: 20 })]
+    const basket1 = makeBasket({
+      userId: 'u1',
+      items: [makeItem({ itemId: 'dessert', quantity: 1, isShared: true, sharerIds: ['u1', 'u2'] })],
+    })
+    const basket2 = makeBasket({ userId: 'u2', items: [] })
+    const basket3 = makeBasket({ userId: 'u3', items: [] }) // not a sharer
+    const session = makeSession({ baskets: [basket1, basket2, basket3] })
+
+    expect(computeBasketDue(basket3, session, menuItems)).toBe(0)
+  })
+
+  it('treats an unresolved shared item (sharerIds null) as full price on the adder, as a safe fallback', () => {
+    const menuItems = [makeMenuItem({ id: 'dessert', price: 20 })]
+    const basket1 = makeBasket({
+      userId: 'u1',
+      items: [makeItem({ itemId: 'dessert', quantity: 1, isShared: true, sharerIds: null })],
+    })
+    const basket2 = makeBasket({ userId: 'u2', items: [] })
+    const session = makeSession({ baskets: [basket1, basket2] })
+
+    expect(computeBasketDue(basket1, session, menuItems)).toBe(20)
+    expect(computeBasketDue(basket2, session, menuItems)).toBe(0)
   })
 })
 
@@ -297,5 +397,170 @@ describe('isPaymentDeadlineExpired', () => {
   it('returns true for a deadline well in the past', () => {
     const session = makeSession({ paymentDeadline: '2020-01-01T00:00:00.000Z' })
     expect(isPaymentDeadlineExpired(session)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// isSharedDevicePayment
+// ---------------------------------------------------------------------------
+
+describe('isSharedDevicePayment', () => {
+  it('returns false when there are no baskets', () => {
+    const session = makeSession()
+    expect(isSharedDevicePayment(session)).toBe(false)
+  })
+
+  it('returns false when no baskets have items', () => {
+    const session = makeSession({
+      baskets: [makeBasket({ userId: 'u1' }), makeBasket({ userId: 'u2' })],
+    })
+    expect(isSharedDevicePayment(session)).toBe(false)
+  })
+
+  it('returns false when exactly one basket has items', () => {
+    const session = makeSession({
+      baskets: [
+        makeBasket({ userId: 'u1', items: [makeItem()] }),
+        makeBasket({ userId: 'u2' }),
+      ],
+    })
+    expect(isSharedDevicePayment(session)).toBe(false)
+  })
+
+  it('returns true when two baskets have items', () => {
+    const session = makeSession({
+      baskets: [
+        makeBasket({ userId: 'u1', items: [makeItem()] }),
+        makeBasket({ userId: 'u2', items: [makeItem()] }),
+      ],
+    })
+    expect(isSharedDevicePayment(session)).toBe(true)
+  })
+
+  it('returns true when three or more baskets have items', () => {
+    const session = makeSession({
+      baskets: [
+        makeBasket({ userId: 'u1', items: [makeItem()] }),
+        makeBasket({ userId: 'u2', items: [makeItem()] }),
+        makeBasket({ userId: 'u3', items: [makeItem()] }),
+      ],
+    })
+    expect(isSharedDevicePayment(session)).toBe(true)
+  })
+
+  it('remains true regardless of session.paymentPlan (independent of the chosen plan)', () => {
+    const session = makeSession({
+      paymentPlan: 'single',
+      baskets: [
+        makeBasket({ userId: 'u1', items: [makeItem()] }),
+        makeBasket({ userId: 'u2', items: [makeItem()] }),
+      ],
+    })
+    // A whole-table 'single' payer plan can still have 2+ non-empty baskets —
+    // the shared-device gate cares about basket count, not the chosen plan.
+    expect(isSharedDevicePayment(session)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// resolveAbsoluteUrl
+// ---------------------------------------------------------------------------
+
+describe('resolveAbsoluteUrl', () => {
+  it('returns an already-absolute https URL unchanged', () => {
+    const url = 'https://secure.helcim.app/interac/abc123?token=xyz'
+    expect(resolveAbsoluteUrl(url, 'https://qraving.app')).toBe(url)
+  })
+
+  it('returns an already-absolute http URL unchanged', () => {
+    const url = 'http://example.com/pay'
+    expect(resolveAbsoluteUrl(url, 'https://qraving.app')).toBe(url)
+  })
+
+  it('resolves a relative path against the given origin', () => {
+    const url = '/api/payment/interac-callback?sessionId=sess-1&basketId=u1&result=APPROVED'
+    expect(resolveAbsoluteUrl(url, 'https://qraving.app')).toBe(
+      'https://qraving.app/api/payment/interac-callback?sessionId=sess-1&basketId=u1&result=APPROVED',
+    )
+  })
+
+  it('resolves a relative path against an origin with a port', () => {
+    const url = '/api/payment/interac-callback?sessionId=sess-1&basketId=u1&result=APPROVED'
+    expect(resolveAbsoluteUrl(url, 'http://localhost:3000')).toBe(
+      'http://localhost:3000/api/payment/interac-callback?sessionId=sess-1&basketId=u1&result=APPROVED',
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// applyWholeTablePayment
+// ---------------------------------------------------------------------------
+
+describe('applyWholeTablePayment', () => {
+  it('marks every non-empty basket as paid with the shared transaction id and payment method', () => {
+    const session = makeSession({
+      paymentPlan: 'single',
+      baskets: [
+        makeBasket({ userId: 'u1', items: [makeItem()] }),
+        makeBasket({ userId: 'u2', items: [makeItem()] }),
+      ],
+    })
+
+    const updated = applyWholeTablePayment(session, 'txn-shared-1', 'card')
+
+    for (const basket of updated.baskets) {
+      expect(basket.paymentStatus).toBe('paid')
+      expect(basket.helcimTransactionId).toBe('txn-shared-1')
+      expect(basket.paymentMethod).toBe('card')
+    }
+  })
+
+  it('leaves empty baskets untouched', () => {
+    const session = makeSession({
+      paymentPlan: 'single',
+      baskets: [
+        makeBasket({ userId: 'u1', items: [makeItem()] }),
+        makeBasket({ userId: 'u2', items: [], paymentStatus: 'pending' }),
+      ],
+    })
+
+    const updated = applyWholeTablePayment(session, 'txn-shared-2', 'apple_pay')
+
+    const emptyBasket = updated.baskets.find((b) => b.userId === 'u2')!
+    expect(emptyBasket.paymentStatus).toBe('pending')
+    expect(emptyBasket.helcimTransactionId).toBeNull()
+    expect(emptyBasket.paymentMethod).toBeNull()
+  })
+
+  it('results in allBasketsPaid returning true for a 3-basket session', () => {
+    const session = makeSession({
+      paymentPlan: 'single',
+      baskets: [
+        makeBasket({ userId: 'u1', items: [makeItem()] }),
+        makeBasket({ userId: 'u2', items: [makeItem()] }),
+        makeBasket({ userId: 'u3', items: [makeItem()] }),
+      ],
+    })
+
+    const updated = applyWholeTablePayment(session, 'txn-shared-3', 'interac')
+
+    expect(allBasketsPaid(updated)).toBe(true)
+  })
+
+  it('does not mutate the input session', () => {
+    const session = makeSession({
+      baskets: [makeBasket({ userId: 'u1', items: [makeItem()] })],
+    })
+
+    applyWholeTablePayment(session, 'txn-shared-4', 'card')
+
+    expect(session.baskets[0].paymentStatus).toBe('pending')
+    expect(session.baskets[0].helcimTransactionId).toBeNull()
+  })
+
+  it('returns a new session object (pure)', () => {
+    const session = makeSession({ baskets: [makeBasket({ items: [makeItem()] })] })
+    const updated = applyWholeTablePayment(session, 'txn-shared-5', 'card')
+    expect(updated).not.toBe(session)
   })
 })

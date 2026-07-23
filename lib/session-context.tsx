@@ -65,6 +65,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           data.paymentDeadline instanceof Timestamp
             ? data.paymentDeadline.toDate().toISOString()
             : (data.paymentDeadline as string | null) ?? null,
+        paymentPlan: (data.paymentPlan as Session['paymentPlan'] | undefined) ?? null,
       }));
     });
 
@@ -107,6 +108,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         userCounter: 0,
         orderStatus: 'pending',
         paymentDeadline: null,
+        paymentPlan: null,
         lastActivity: serverTimestamp(),
         expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 60 * 1000)),
       },
@@ -129,6 +131,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         paymentDeadline: s.paymentDeadline
           ? Timestamp.fromDate(new Date(s.paymentDeadline))
           : null,
+        paymentPlan: s.paymentPlan,
         userCounter: s.userCounter,
       },
       { merge: true },

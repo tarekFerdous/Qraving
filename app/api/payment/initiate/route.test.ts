@@ -10,6 +10,12 @@ import { createSession } from '@/lib/session'
 
 const mockSessions = new Map<string, Session>()
 
+// Mutable per-test menu fixtures for getMenu (empty by default, matching the
+// prior fixed-empty mock — individual tests can populate these to exercise
+// real menu-item prices, e.g. the shared-item charge-amount test below).
+let mockCategoryDocs: Array<{ id: string; data: () => unknown }> = []
+let mockMenuItemDocs: Array<{ id: string; data: () => unknown }> = []
+
 vi.mock('@/lib/session-firestore', () => ({
   getSession: vi.fn().mockImplementation(async (id: string) =>
     mockSessions.get(id) ?? createSession(id),
@@ -21,9 +27,15 @@ vi.mock('@/lib/session-firestore', () => ({
 
 vi.mock('@/lib/firebase-admin', () => ({
   adminDb: {
-    collection: vi.fn().mockReturnValue({
-      orderBy: vi.fn().mockReturnValue({ get: vi.fn().mockResolvedValue({ docs: [] }) }),
-      get: vi.fn().mockResolvedValue({ docs: [] }),
+    collection: vi.fn().mockImplementation((path: string) => {
+      if (path.endsWith('/categories')) {
+        return {
+          orderBy: vi.fn().mockReturnValue({
+            get: vi.fn().mockImplementation(async () => ({ docs: mockCategoryDocs })),
+          }),
+        }
+      }
+      return { get: vi.fn().mockImplementation(async () => ({ docs: mockMenuItemDocs })) }
     }),
   },
 }))
@@ -40,6 +52,8 @@ function makeItem(overrides: Partial<BasketItem> = {}): BasketItem {
     addOns: [],
     instructions: '',
     quantity: 1,
+    isShared: false,
+    sharerIds: null,
     ...overrides,
   }
 }
@@ -64,6 +78,7 @@ function makeSession(overrides: Partial<Session> = {}): Session {
     baskets: [],
     orderStatus: 'building',
     paymentDeadline: null,
+    paymentPlan: null,
     ...overrides,
   }
 }
@@ -91,6 +106,8 @@ function makeRequest(body: unknown): NextRequest {
 describe('POST /api/payment/initiate', () => {
   beforeEach(() => {
     mockSessions.clear()
+    mockCategoryDocs = []
+    mockMenuItemDocs = []
     process.env.HELCIM_API_KEY = 'test-api-key'
     vi.stubGlobal(
       'fetch',
@@ -192,6 +209,160 @@ describe('POST /api/payment/initiate', () => {
     const res = await POST(req)
 
     expect(res.status).toBe(410)
+  })
+
+  // ---------------------------------------------------------------------
+  // paymentPlan-aware behavior (issue #160)
+  // ---------------------------------------------------------------------
+
+  it('persists a client-supplied paymentPlan onto the session', async () => {
+    seedSession('sess-initiate-plan-persist', makeSession({
+      id: 'sess-initiate-plan-persist',
+      baskets: [makeBasket({ userId: 'user-1' }), makeBasket({ userId: 'user-2' }), makeBasket({ userId: 'user-3' })],
+    }))
+
+    const req = makeRequest({
+      sessionId: 'sess-initiate-plan-persist',
+      basketId: 'user-1',
+      paymentMode: 'card',
+      paymentPlan: 'single',
+    })
+    const res = await POST(req)
+
+    expect(res.status).toBe(200)
+    expect(readSession('sess-initiate-plan-persist').paymentPlan).toBe('single')
+  })
+
+  it('does not stamp a paymentDeadline for a whole-table (single) payment plan even with 2+ baskets', async () => {
+    seedSession('sess-initiate-whole-table-no-deadline', makeSession({
+      id: 'sess-initiate-whole-table-no-deadline',
+      baskets: [makeBasket({ userId: 'user-1' }), makeBasket({ userId: 'user-2' }), makeBasket({ userId: 'user-3' })],
+    }))
+
+    const req = makeRequest({
+      sessionId: 'sess-initiate-whole-table-no-deadline',
+      basketId: 'user-1',
+      paymentMode: 'card',
+      paymentPlan: 'single',
+    })
+    const res = await POST(req)
+
+    expect(res.status).toBe(200)
+    expect(readSession('sess-initiate-whole-table-no-deadline').paymentDeadline).toBeNull()
+  })
+
+  it('does not overwrite an already-recorded paymentPlan with a later client-supplied value', async () => {
+    seedSession('sess-initiate-plan-locked', makeSession({
+      id: 'sess-initiate-plan-locked',
+      paymentPlan: 'split',
+      baskets: [makeBasket({ userId: 'user-1' }), makeBasket({ userId: 'user-2' })],
+    }))
+
+    const req = makeRequest({
+      sessionId: 'sess-initiate-plan-locked',
+      basketId: 'user-1',
+      paymentMode: 'card',
+      paymentPlan: 'single',
+    })
+    await POST(req)
+
+    expect(readSession('sess-initiate-plan-locked').paymentPlan).toBe('split')
+  })
+
+  it('still stamps a paymentDeadline when paymentPlan is split, even when explicitly supplied', async () => {
+    seedSession('sess-initiate-split-explicit', makeSession({
+      id: 'sess-initiate-split-explicit',
+      baskets: [makeBasket({ userId: 'user-1' }), makeBasket({ userId: 'user-2' })],
+    }))
+
+    const req = makeRequest({
+      sessionId: 'sess-initiate-split-explicit',
+      basketId: 'user-1',
+      paymentMode: 'card',
+      paymentPlan: 'split',
+    })
+    await POST(req)
+
+    expect(readSession('sess-initiate-split-explicit').paymentDeadline).not.toBeNull()
+  })
+
+  // ---------------------------------------------------------------------
+  // computeBasketDue-aware charge amount (issue #162 — shared items)
+  // ---------------------------------------------------------------------
+
+  it('split-mode charge amount reflects computeBasketDue, redistributing a shared item across its sharers', async () => {
+    mockCategoryDocs = [{ id: 'cat-1', data: () => ({ name: 'Mains', description: '', order: 0 }) }]
+    mockMenuItemDocs = [
+      {
+        id: 'dessert',
+        data: () => ({
+          name: 'Cake',
+          description: '',
+          price: 2000, // $20.00, stored in cents per FirestoreMenuItem
+          imageUrl: '',
+          categoryId: 'cat-1',
+          dietaryTags: [],
+          allergens: [],
+          isAvailable: true,
+          customizations: { sizes: [], addOns: [] },
+        }),
+      },
+      {
+        id: 'burger',
+        data: () => ({
+          name: 'Burger',
+          description: '',
+          price: 1000, // $10.00
+          imageUrl: '',
+          categoryId: 'cat-1',
+          dietaryTags: [],
+          allergens: [],
+          isAvailable: true,
+          customizations: { sizes: [], addOns: [] },
+        }),
+      },
+    ]
+
+    seedSession('sess-initiate-shared-item', makeSession({
+      id: 'sess-initiate-shared-item',
+      paymentPlan: 'split',
+      baskets: [
+        makeBasket({
+          userId: 'user-1',
+          items: [
+            makeItem({
+              itemId: 'dessert',
+              quantity: 1,
+              isShared: true,
+              sharerIds: ['user-1', 'user-2'],
+            }),
+          ],
+        }),
+        makeBasket({
+          userId: 'user-2',
+          items: [makeItem({ itemId: 'burger', quantity: 1, isShared: false })],
+        }),
+      ],
+    }))
+
+    const req = makeRequest({
+      sessionId: 'sess-initiate-shared-item',
+      basketId: 'user-1',
+      paymentMode: 'card',
+      paymentPlan: 'split',
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+
+    const helcimCall = (fetch as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call) => typeof call[0] === 'string' && call[0].includes('helcim.com'),
+    )
+    expect(helcimCall).toBeDefined()
+    const helcimBody = JSON.parse(helcimCall![1].body as string)
+
+    // user-1 owes half of the $20 shared dessert ($10 = 1000 cents), not the
+    // full $2000 it would be charged under computeBasketTotal.
+    expect(helcimBody.amount).toBe(1000)
   })
 
   it('returns 502 when the Helcim API returns a non-2xx response', async () => {

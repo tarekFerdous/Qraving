@@ -28,7 +28,7 @@ interface AddToCartSheetProps {
   editBasketUserId?: string | null; // non-null → edit mode
   onClose: () => void;
   onPass: () => void;
-  onFinish: () => void;
+  onFinish: (basket: UserBasket) => void; // called with the current turn's basket
   onAddAnotherItem?: () => void; // called when "Add another item" is tapped in edit mode
 }
 
@@ -74,6 +74,9 @@ export default function AddToCartSheet({
   const [selectedSize, setSelectedSize] = useState<'Small' | 'Medium' | 'Large'>('Medium');
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
   const [instructions, setInstructions] = useState('');
+  // "Share this item" — no sharer selection required yet; who's sharing is
+  // resolved later, at payment time (see SharerSelectionSheet).
+  const [isShared, setIsShared] = useState(false);
 
   // Staged BasketItem carried from step 1 → step 2
   const stagedItem = useRef<BasketItem | null>(null);
@@ -106,6 +109,7 @@ export default function AddToCartSheet({
       setSelectedSize('Medium');
       setSelectedAddOns([]);
       setInstructions('');
+      setIsShared(false);
       setStep('customise');
       setSegments(['', '', '']);
       setIdentityName('');
@@ -212,8 +216,10 @@ export default function AddToCartSheet({
       addOns: [...selectedAddOns],
       instructions: instructions.trim(),
       quantity: 1,
+      isShared,
+      sharerIds: null, // resolved later at payment time, if isShared
     };
-  }, [item, selectedSize, selectedAddOns, instructions]);
+  }, [item, selectedSize, selectedAddOns, instructions, isShared]);
 
   // ── Step 1 "Add to basket" ──
   const handleAddToBasket = useCallback(() => {
@@ -316,10 +322,17 @@ export default function AddToCartSheet({
   }, [onPass, handleClose]);
 
   // ── Actions panel: "Finish" confirm ──
+  // Finish no longer resets the session — it routes into checkout for the
+  // current turn's basket. The caller (MenuPage) opens CheckoutSheet with it.
   const handleFinishConfirm = useCallback(() => {
-    onFinish();
+    const basket = turnState
+      ? session.baskets.find((b) => b.userId === turnState!.userId)
+      : undefined;
+    if (basket) {
+      onFinish(basket);
+    }
     handleClose();
-  }, [onFinish, handleClose]);
+  }, [onFinish, handleClose, session]);
 
   // ── Edit mode: "Add another item" ──
   const handleAddAnotherItem = useCallback(() => {
@@ -599,6 +612,27 @@ export default function AddToCartSheet({
                   maxLength={300}
                   className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 resize-none focus:outline-none focus:border-red-400"
                 />
+              </section>
+
+              {/* Share this item — sharer selection happens later, at payment time */}
+              <section>
+                <label className="flex items-center justify-between gap-3 py-3 border-t border-gray-100 cursor-pointer select-none">
+                  <div>
+                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                      Share this item
+                    </h3>
+                    <p className="text-xs text-gray-500">
+                      Split the cost evenly with others at the table. You&apos;ll pick who at payment time.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={isShared}
+                    onChange={() => setIsShared((prev) => !prev)}
+                    aria-label="Share this item"
+                    className="w-4 h-4 rounded accent-qraving-green cursor-pointer shrink-0"
+                  />
+                </label>
               </section>
 
               {/* Add to basket */}

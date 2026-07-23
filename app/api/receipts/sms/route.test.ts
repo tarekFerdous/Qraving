@@ -23,6 +23,8 @@ function makeItem(overrides: Partial<BasketItem> = {}): BasketItem {
     addOns: [],
     instructions: '',
     quantity: 2,
+    isShared: false,
+    sharerIds: null,
     ...overrides,
   }
 }

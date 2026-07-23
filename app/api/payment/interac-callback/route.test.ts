@@ -37,7 +37,16 @@ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
 // ---------------------------------------------------------------------------
 
 function makeItem(): BasketItem {
-  return { itemId: 'item-1', name: 'Burger', size: 'Medium', addOns: [], instructions: '', quantity: 1 }
+  return {
+    itemId: 'item-1',
+    name: 'Burger',
+    size: 'Medium',
+    addOns: [],
+    instructions: '',
+    quantity: 1,
+    isShared: false,
+    sharerIds: null,
+  }
 }
 
 function makeBasket(overrides: Partial<UserBasket> = {}): UserBasket {
@@ -54,7 +63,7 @@ function makeBasket(overrides: Partial<UserBasket> = {}): UserBasket {
 }
 
 function makeSession(overrides: Partial<Session> = {}): Session {
-  return { id: 'sess-1', userCounter: 0, baskets: [], orderStatus: 'payment_pending', paymentDeadline: null, ...overrides }
+  return { id: 'sess-1', userCounter: 0, baskets: [], orderStatus: 'payment_pending', paymentDeadline: null, paymentPlan: null, ...overrides }
 }
 
 function seedSession(id: string, session: Session) { mockSessions.set(id, session) }
@@ -135,5 +144,71 @@ describe('GET /api/payment/interac-callback', () => {
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/sess-ic-idem?payment=success')
     expect(readSession('sess-ic-idem').baskets.find((b) => b.userId === 'user-1')!.helcimTransactionId).toBe('original-txn')
+  })
+
+  // -------------------------------------------------------------------------
+  // Whole-table payment (paymentPlan === 'single')
+  // -------------------------------------------------------------------------
+
+  it('marks every non-empty basket paid with the same shared transaction on approval when paymentPlan is single', async () => {
+    seedSession('sess-ic-whole-table', makeSession({
+      id: 'sess-ic-whole-table',
+      paymentPlan: 'single',
+      baskets: [
+        makeBasket({ userId: 'user-1' }),
+        makeBasket({ userId: 'user-2' }),
+        makeBasket({ userId: 'user-3', items: [] }), // empty basket — untouched
+      ],
+    }))
+
+    const res = await GET(makeRequest({ sessionId: 'sess-ic-whole-table', basketId: 'user-1', transactionId: 'txn-ic-whole-table', status: 'approved' }))
+
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toContain('/sess-ic-whole-table?payment=success')
+
+    const updated = readSession('sess-ic-whole-table')
+    const user1 = updated.baskets.find((b) => b.userId === 'user-1')!
+    const user2 = updated.baskets.find((b) => b.userId === 'user-2')!
+    const user3 = updated.baskets.find((b) => b.userId === 'user-3')!
+
+    expect(user1.paymentStatus).toBe('paid')
+    expect(user2.paymentStatus).toBe('paid')
+    expect(user1.helcimTransactionId).toBe('txn-ic-whole-table')
+    expect(user2.helcimTransactionId).toBe('txn-ic-whole-table')
+    expect(user1.paymentMethod).toBe('interac')
+    expect(user2.paymentMethod).toBe('interac')
+    expect(user3.paymentStatus).toBe('pending')
+
+    expect(updated.orderStatus).toBe('submitted')
+  })
+
+  it('only marks the initiating basket failed on decline when paymentPlan is single', async () => {
+    seedSession('sess-ic-whole-table-declined', makeSession({
+      id: 'sess-ic-whole-table-declined',
+      paymentPlan: 'single',
+      baskets: [makeBasket({ userId: 'user-1' }), makeBasket({ userId: 'user-2' })],
+    }))
+
+    await GET(makeRequest({ sessionId: 'sess-ic-whole-table-declined', basketId: 'user-1', transactionId: 'txn-ic-whole-declined', status: 'declined' }))
+
+    const updated = readSession('sess-ic-whole-table-declined')
+    expect(updated.baskets.find((b) => b.userId === 'user-1')!.paymentStatus).toBe('failed')
+    expect(updated.baskets.find((b) => b.userId === 'user-2')!.paymentStatus).toBe('pending')
+    expect(updated.orderStatus).not.toBe('submitted')
+  })
+
+  it('does not fan out to other baskets when paymentPlan is split (existing per-basket behavior)', async () => {
+    seedSession('sess-ic-split-unchanged', makeSession({
+      id: 'sess-ic-split-unchanged',
+      paymentPlan: 'split',
+      baskets: [makeBasket({ userId: 'user-1' }), makeBasket({ userId: 'user-2' })],
+    }))
+
+    await GET(makeRequest({ sessionId: 'sess-ic-split-unchanged', basketId: 'user-1', transactionId: 'txn-ic-split-1', status: 'approved' }))
+
+    const updated = readSession('sess-ic-split-unchanged')
+    expect(updated.baskets.find((b) => b.userId === 'user-1')!.paymentStatus).toBe('paid')
+    expect(updated.baskets.find((b) => b.userId === 'user-2')!.paymentStatus).toBe('pending')
+    expect(updated.orderStatus).not.toBe('submitted')
   })
 })

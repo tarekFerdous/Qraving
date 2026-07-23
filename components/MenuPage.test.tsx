@@ -18,7 +18,7 @@ vi.mock('@/lib/firebase-client', () => ({
 
 vi.mock('@/lib/session-context', () => ({
   useSession: () => ({
-    session: { id: 'demo-table-1', userCounter: 0, baskets: [], orderStatus: 'building', paymentDeadline: null },
+    session: { id: 'demo-table-1', userCounter: 0, baskets: [], orderStatus: 'building', paymentDeadline: null, paymentPlan: null },
     updateSession: vi.fn(),
     isExpired: false,
     resetSession: vi.fn(),

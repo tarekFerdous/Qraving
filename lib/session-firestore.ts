@@ -35,6 +35,7 @@ export async function getSession(sessionId: string): Promise<Session> {
       data.paymentDeadline instanceof Timestamp
         ? data.paymentDeadline.toDate().toISOString()
         : (data.paymentDeadline as string | null) ?? null,
+    paymentPlan: (data.paymentPlan as Session['paymentPlan'] | undefined) ?? null,
     baskets,
   };
 }
@@ -49,6 +50,7 @@ export async function setSession(sessionId: string, session: Session): Promise<v
       paymentDeadline: session.paymentDeadline
         ? Timestamp.fromDate(new Date(session.paymentDeadline))
         : null,
+      paymentPlan: session.paymentPlan,
       userCounter: session.userCounter,
     },
     { merge: true },

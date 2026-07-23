@@ -43,7 +43,16 @@ function sign(rawBody: string): string {
 }
 
 function makeItem(): BasketItem {
-  return { itemId: 'item-1', name: 'Burger', size: 'Medium', addOns: [], instructions: '', quantity: 1 }
+  return {
+    itemId: 'item-1',
+    name: 'Burger',
+    size: 'Medium',
+    addOns: [],
+    instructions: '',
+    quantity: 1,
+    isShared: false,
+    sharerIds: null,
+  }
 }
 
 function makeBasket(overrides: Partial<UserBasket> = {}): UserBasket {
@@ -60,7 +69,7 @@ function makeBasket(overrides: Partial<UserBasket> = {}): UserBasket {
 }
 
 function makeSession(overrides: Partial<Session> = {}): Session {
-  return { id: 'sess-1', userCounter: 0, baskets: [], orderStatus: 'payment_pending', paymentDeadline: null, ...overrides }
+  return { id: 'sess-1', userCounter: 0, baskets: [], orderStatus: 'payment_pending', paymentDeadline: null, paymentPlan: null, ...overrides }
 }
 
 interface WebhookPayload {
@@ -156,5 +165,94 @@ describe('POST /api/payment/webhook', () => {
     const res = await POST(makeRequest({ sessionId: 'sess-webhook-declined-200', basketId: 'user-1', transactionId: 'txn-declined-200', status: 'declined', paymentMethod: 'card' }))
 
     expect(res.status).toBe(200)
+  })
+
+  // -------------------------------------------------------------------------
+  // Whole-table payment (paymentPlan === 'single')
+  // -------------------------------------------------------------------------
+
+  it('marks every non-empty basket paid with the same shared transaction on approval when paymentPlan is single', async () => {
+    seedSession('sess-webhook-whole-table', makeSession({
+      id: 'sess-webhook-whole-table',
+      paymentPlan: 'single',
+      baskets: [
+        makeBasket({ userId: 'user-1' }),
+        makeBasket({ userId: 'user-2' }),
+        makeBasket({ userId: 'user-3', items: [] }), // empty basket — untouched
+      ],
+    }))
+
+    const res = await POST(makeRequest({
+      sessionId: 'sess-webhook-whole-table',
+      basketId: 'user-1',
+      transactionId: 'txn-whole-table-1',
+      status: 'approved',
+      paymentMethod: 'card',
+    }))
+
+    expect(res.status).toBe(200)
+
+    const updated = readSession('sess-webhook-whole-table')
+    const user1 = updated.baskets.find((b) => b.userId === 'user-1')!
+    const user2 = updated.baskets.find((b) => b.userId === 'user-2')!
+    const user3 = updated.baskets.find((b) => b.userId === 'user-3')!
+
+    expect(user1.paymentStatus).toBe('paid')
+    expect(user2.paymentStatus).toBe('paid')
+    expect(user1.helcimTransactionId).toBe('txn-whole-table-1')
+    expect(user2.helcimTransactionId).toBe('txn-whole-table-1')
+    expect(user1.paymentMethod).toBe('card')
+    expect(user2.paymentMethod).toBe('card')
+
+    // Empty basket left alone
+    expect(user3.paymentStatus).toBe('pending')
+    expect(user3.helcimTransactionId).toBeNull()
+
+    // allBasketsPaid is now trivially true → orderStatus advances
+    expect(updated.orderStatus).toBe('submitted')
+  })
+
+  it('only marks the initiating basket failed on decline when paymentPlan is single', async () => {
+    seedSession('sess-webhook-whole-table-declined', makeSession({
+      id: 'sess-webhook-whole-table-declined',
+      paymentPlan: 'single',
+      baskets: [makeBasket({ userId: 'user-1' }), makeBasket({ userId: 'user-2' })],
+    }))
+
+    const res = await POST(makeRequest({
+      sessionId: 'sess-webhook-whole-table-declined',
+      basketId: 'user-1',
+      transactionId: 'txn-whole-table-declined',
+      status: 'declined',
+      paymentMethod: 'card',
+    }))
+
+    expect(res.status).toBe(200)
+    const updated = readSession('sess-webhook-whole-table-declined')
+    expect(updated.baskets.find((b) => b.userId === 'user-1')!.paymentStatus).toBe('failed')
+    expect(updated.baskets.find((b) => b.userId === 'user-2')!.paymentStatus).toBe('pending')
+    expect(updated.orderStatus).not.toBe('submitted')
+  })
+
+  it('does not fan out to other baskets when paymentPlan is split (existing per-basket behavior)', async () => {
+    seedSession('sess-webhook-split-unchanged', makeSession({
+      id: 'sess-webhook-split-unchanged',
+      paymentPlan: 'split',
+      baskets: [makeBasket({ userId: 'user-1' }), makeBasket({ userId: 'user-2' })],
+    }))
+
+    const res = await POST(makeRequest({
+      sessionId: 'sess-webhook-split-unchanged',
+      basketId: 'user-1',
+      transactionId: 'txn-split-1',
+      status: 'approved',
+      paymentMethod: 'card',
+    }))
+
+    expect(res.status).toBe(200)
+    const updated = readSession('sess-webhook-split-unchanged')
+    expect(updated.baskets.find((b) => b.userId === 'user-1')!.paymentStatus).toBe('paid')
+    expect(updated.baskets.find((b) => b.userId === 'user-2')!.paymentStatus).toBe('pending')
+    expect(updated.orderStatus).not.toBe('submitted')
   })
 })

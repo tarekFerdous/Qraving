@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, setSession } from '@/lib/session-firestore'
-import { computeBasketTotal, resolvePaymentMode, isPaymentDeadlineExpired } from '@/lib/payment'
+import {
+  computeBasketDue,
+  computeSessionTotal,
+  resolvePaymentMode,
+  isPaymentDeadlineExpired,
+} from '@/lib/payment'
 import { getMenu } from '@/lib/menu'
 import { isTestMode } from '@/lib/helcim'
 
@@ -13,13 +18,19 @@ const HELCIM_BASE_URL = isTestMode
   : 'https://api.helcim.com/v2' // production: same URL, live API key
 
 export async function POST(req: NextRequest) {
-  const { sessionId, basketId, paymentMode } = (await req.json()) as {
+  const { sessionId, basketId, paymentMode, paymentPlan } = (await req.json()) as {
     sessionId: string
     basketId: string
     paymentMode: 'wallet' | 'card' | 'interac'
+    // The plan the client chose on PaymentPlanSheet (or null when the
+    // session never needed one, e.g. a single-basket session). Persisted
+    // onto the session here so it's authoritative for the webhook/callback
+    // routes even if the client's own optimistic Firestore write hasn't
+    // landed yet.
+    paymentPlan?: 'single' | 'split' | null
   }
 
-  const session = await getSession(sessionId)
+  let session = await getSession(sessionId)
 
   // 410 Gone when the split-payment deadline has passed
   if (isPaymentDeadlineExpired(session)) {
@@ -31,10 +42,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Basket not found' }, { status: 404 })
   }
 
-  // Resolve menu items to compute an accurate basket total
+  // Record the client's chosen payment plan on the session, once, if it
+  // hasn't been recorded yet.
+  if (paymentPlan && session.paymentPlan === null) {
+    session = { ...session, paymentPlan }
+  }
+
+  // paymentPlan (once chosen) drives downstream behavior; resolvePaymentMode
+  // is only the inferred fallback for sessions that never needed a choice
+  // (e.g. a single non-empty basket).
+  const effectivePlan = session.paymentPlan ?? resolvePaymentMode(session)
+
+  // Resolve menu items to compute an accurate total. Split-mode charges
+  // computeBasketDue (not computeBasketTotal) so the actual Helcim charge
+  // reflects this basket's share of any items it's splitting with other
+  // baskets — this is the security-relevant amount, since this route (not
+  // the client) determines what's really charged.
   const menuSections = await getMenu('demo-company', 'demo-branch')
   const menuItems = menuSections.flatMap((s) => s.items)
-  const totalCents = Math.round(computeBasketTotal(basket, menuItems) * 100)
+  const totalCents = Math.round(
+    (effectivePlan === 'single'
+      ? computeSessionTotal(session, menuItems)
+      : computeBasketDue(basket, session, menuItems)) * 100,
+  )
 
   // Build the Helcim initialisation payload
   const helcimBody: Record<string, unknown> = {
@@ -81,8 +111,11 @@ export async function POST(req: NextRequest) {
     updatedSession = { ...updatedSession, orderStatus: 'payment_pending' }
   }
 
-  // On the first split-flow initiation: stamp a 30-minute payment deadline
-  if (resolvePaymentMode(updatedSession) === 'split' && updatedSession.paymentDeadline === null) {
+  // On the first split-flow initiation: stamp a 30-minute payment deadline.
+  // Reads paymentPlan (falling back to the inference only when no plan has
+  // been chosen), not the raw resolvePaymentMode result — a whole-table
+  // payment never needs a per-basket deadline even if there are 2+ baskets.
+  if (effectivePlan === 'split' && updatedSession.paymentDeadline === null) {
     const deadline = new Date(Date.now() + 30 * 60 * 1000).toISOString()
     updatedSession = { ...updatedSession, paymentDeadline: deadline }
   }

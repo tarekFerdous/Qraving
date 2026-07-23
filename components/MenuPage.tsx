@@ -9,9 +9,11 @@ import SectionNavigator from '@/components/SectionNavigator';
 import AddToCartSheet from '@/components/AddToCartSheet';
 import BasketsSheet from '@/components/BasketsSheet';
 import CheckoutSheet from '@/components/CheckoutSheet';
+import PaymentPlanSheet from '@/components/PaymentPlanSheet';
+import SharerSelectionSheet from '@/components/SharerSelectionSheet';
 import { useSession } from '@/lib/session-context';
 import { useRemovedItemsToast } from '@/components/RemovedItemsToast';
-import { createSession, UserBasket } from '@/lib/session';
+import { isSessionClosed, hasUnresolvedSharedItems, updateItemSharers, UserBasket } from '@/lib/session';
 import Image from 'next/image';
 
 interface MenuPageProps {
@@ -28,8 +30,9 @@ export default function MenuPage({ sections, company, branch, companyName, logoU
   const [basketsOpen, setBasketsOpen] = useState(false);
   const [modifyBasketId, setModifyBasketId] = useState<string | null>(null);
   const [awaitingTurn, setAwaitingTurn] = useState(false);
-  const [finished, setFinished] = useState(false);
   const [checkoutBasket, setCheckoutBasket] = useState<UserBasket | null>(null);
+  const [planBasket, setPlanBasket] = useState<UserBasket | null>(null);
+  const [sharerBasket, setSharerBasket] = useState<UserBasket | null>(null);
   const [availabilityMap, setAvailabilityMap] = useState<Map<string, boolean>>(new Map());
   const [cachedSections, setCachedSections] = useState<MenuSection[] | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -38,6 +41,10 @@ export default function MenuPage({ sections, company, branch, companyName, logoU
   });
   const { session, updateSession, isExpired, resetSession, itemsRemovedExternally, clearItemsRemovedExternally } = useSession();
   const basketCount = session.baskets.length;
+  // Once the session has been submitted to the kitchen it's closed: no more
+  // items can be added client-side. The table re-scans the QR code to start
+  // a fresh session (that flow is pre-existing / out of scope here).
+  const sessionClosed = isSessionClosed(session);
 
   const { trigger: triggerRemovedToast, Toast: RemovedToast } = useRemovedItemsToast();
 
@@ -88,6 +95,38 @@ export default function MenuPage({ sections, company, branch, companyName, logoU
   // Flatten all menu items for basket total computation in CheckoutSheet
   const menuItems = displaySections.flatMap((s) => s.items);
 
+  // Single choke point for entering payment: first resolve any shared items
+  // this basket added but hasn't assigned sharers for yet, then (when the
+  // table has 2+ non-empty baskets and no paymentPlan has been chosen yet)
+  // show the plan choice screen, then finally open the existing per-basket
+  // CheckoutSheet — no behavior change for the no-shared-items, single-payer
+  // case.
+  function requestCheckout(basket: UserBasket) {
+    // Re-resolve from session state — the basket passed in (e.g. straight
+    // from AddToCartSheet's onFinish) may be a snapshot taken before any
+    // sharer resolution just landed.
+    const liveBasket = session.baskets.find((b) => b.userId === basket.userId) ?? basket;
+
+    if (hasUnresolvedSharedItems(liveBasket)) {
+      setSharerBasket(liveBasket);
+      return;
+    }
+
+    const nonEmptyCount = session.baskets.filter((b) => b.items.length > 0).length;
+    if (nonEmptyCount >= 2 && session.paymentPlan === null) {
+      setPlanBasket(liveBasket);
+    } else {
+      setCheckoutBasket(liveBasket);
+    }
+  }
+
+  // The specific unresolved shared item currently being resolved for
+  // sharerBasket (one at a time — if a basket has multiple unresolved shared
+  // items, resolving one re-triggers this to surface the next).
+  const pendingSharedItem = sharerBasket
+    ? sharerBasket.items.find((i) => i.isShared && i.sharerIds === null) ?? null
+    : null;
+
   return (
     <div className="flex flex-col h-dvh lg:h-full overflow-hidden bg-qraving-bg">
       {/* Co-branded sticky header — blends into the app background, no separator */}
@@ -134,7 +173,15 @@ export default function MenuPage({ sections, company, branch, companyName, logoU
           each section's content inside the navigator, so it snaps in with the
           category rather than living in a static band here. */}
       <div className="flex-1 overflow-hidden">
-        <SectionNavigator sections={displaySections} onAddToCart={setSelectedItem} />
+        <SectionNavigator
+          sections={displaySections}
+          onAddToCart={(item) => {
+            // Single choke point: once the session is submitted, no new items
+            // can be added — block opening the sheet at all.
+            if (sessionClosed) return;
+            setSelectedItem(item);
+          }}
+        />
       </div>
 
       {/* Fixed overlays */}
@@ -146,10 +193,12 @@ export default function MenuPage({ sections, company, branch, companyName, logoU
           setSelectedItem(null);
           setAwaitingTurn(true);
         }}
-        onFinish={() => {
+        onFinish={(basket) => {
+          // Finish routes into checkout instead of resetting the session —
+          // the session only closes once payment completes (orderStatus
+          // flips to 'submitted' via the webhook/callback routes).
           setSelectedItem(null);
-          setFinished(true);
-          updateSession(createSession('demo-table-1'));
+          requestCheckout(basket);
         }}
         onAddAnotherItem={() => setModifyBasketId(null)}
       />
@@ -162,9 +211,55 @@ export default function MenuPage({ sections, company, branch, companyName, logoU
         }}
         onProceedToPayment={(basket) => {
           setBasketsOpen(false);
-          setCheckoutBasket(basket);
+          requestCheckout(basket);
         }}
       />
+
+      {/* Sharer selection — shown before payment-plan/checkout whenever the
+          basket has an item flagged isShared with no sharer list resolved
+          yet. Resolves one item at a time; resolving the last one falls
+          through to requestCheckout's next gate. */}
+      {sharerBasket && pendingSharedItem && (
+        <SharerSelectionSheet
+          basket={sharerBasket}
+          item={pendingSharedItem}
+          session={session}
+          onClose={() => setSharerBasket(null)}
+          onConfirm={(sharerIds) => {
+            const updatedBasket = updateItemSharers(sharerBasket, pendingSharedItem.itemId, sharerIds);
+            const updatedSession = {
+              ...session,
+              baskets: session.baskets.map((b) =>
+                b.userId === updatedBasket.userId ? updatedBasket : b,
+              ),
+            };
+            updateSession(updatedSession);
+
+            if (hasUnresolvedSharedItems(updatedBasket)) {
+              // Another shared item on this same basket still needs sharers.
+              setSharerBasket(updatedBasket);
+            } else {
+              setSharerBasket(null);
+              requestCheckout(updatedBasket);
+            }
+          }}
+        />
+      )}
+
+      {/* Payment plan choice — only shown once, before checkout, when the
+          table has 2+ non-empty baskets and no plan has been chosen yet. */}
+      {planBasket && (
+        <PaymentPlanSheet
+          session={session}
+          menuItems={menuItems}
+          onClose={() => setPlanBasket(null)}
+          onConfirm={(plan) => {
+            updateSession({ ...session, paymentPlan: plan });
+            setCheckoutBasket(planBasket);
+            setPlanBasket(null);
+          }}
+        />
+      )}
 
       {/* Checkout sheet — opened per-basket from BasketsSheet */}
       {checkoutBasket && (
@@ -192,14 +287,16 @@ export default function MenuPage({ sections, company, branch, companyName, logoU
         </div>
       )}
 
-      {/* "Your baskets will be ready soon" terminal overlay */}
-      {finished && (
+      {/* "Your baskets will be ready soon" terminal overlay — driven by the
+          realtime session.orderStatus, so every device in the session sees
+          it once the order is actually submitted, not just the payer. */}
+      {sessionClosed && (
         <div className="fixed inset-0 z-60 bg-white flex flex-col items-center justify-center gap-4 px-8">
           <h1 className="text-2xl font-bold text-gray-900 text-center">
             Your baskets will be ready soon.
           </h1>
           <p className="text-sm text-gray-500 text-center">
-            Feel free to come back to this page or scan the QR code again.
+            You can always re-scan the QR code to order more items.
           </p>
         </div>
       )}

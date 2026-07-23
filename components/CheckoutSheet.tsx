@@ -1,9 +1,16 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import QRCode from 'qrcode';
 import { Session, UserBasket } from '@/lib/session';
 import { MenuItem } from '@/lib/menu';
-import { computeBasketTotal, resolvePaymentMode } from '@/lib/payment';
+import {
+  computeBasketDue,
+  computeSessionTotal,
+  resolvePaymentMode,
+  isSharedDevicePayment,
+  resolveAbsoluteUrl,
+} from '@/lib/payment';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,7 +25,7 @@ export interface CheckoutSheetProps {
   branchId?: string;
 }
 
-type View = 'checkout' | 'confirmed';
+type View = 'checkout' | 'confirm-identity' | 'confirmed';
 type LoadState = 'idle' | 'loading' | 'error';
 type InteracState = 'idle' | 'loading' | 'error';
 type EmailState = 'idle' | 'loading' | 'sent' | 'error';
@@ -94,14 +101,42 @@ export default function CheckoutSheet({
   const [emailState, setEmailState] = useState<EmailState>('idle');
   const [countdown, setCountdown] = useState<string | null>(null);
 
+  // Serial same-device payment safety (#161): which wallet/card payment mode
+  // is awaiting identity confirmation, and the off-device Interac link/QR
+  // once generated. Both are null/idle whenever !isSharedDevice — a single
+  // non-empty-basket session is untouched by any of this.
+  const [pendingPaymentMode, setPendingPaymentMode] = useState<'wallet' | 'card' | null>(null);
+  const [interacLink, setInteracLink] = useState<{ url: string; qrDataUrl: string } | null>(null);
+
   // Track the active Helcim message listener for cleanup
   const messageListenerRef = useRef<((e: MessageEvent) => void) | null>(null);
 
-  const total = computeBasketTotal(basket, menuItems);
-  const totalFormatted = `$${total.toFixed(2)} CAD`;
+  // Once a paymentPlan has been chosen (or the session only ever needed one
+  // basket) downstream behavior must follow it, not the raw inference —
+  // resolvePaymentMode(session) is only consulted as the *display* default
+  // before a choice has been recorded (mirrors the pre-selection shown on
+  // PaymentPlanSheet).
+  const effectivePlan = session.paymentPlan ?? resolvePaymentMode(session);
+  const isSplit = effectivePlan === 'split';
 
-  const paymentMode = resolvePaymentMode(session);
-  const isSplit = paymentMode === 'split';
+  // Shared-device serial-payment safety gate (#161): "could this device be
+  // passed between table members mid-checkout" — a raw basket-count check,
+  // independent of the chosen payment plan (a whole-table 'single' payer can
+  // still have 2+ non-empty baskets). Distinct from isSplit/effectivePlan on
+  // purpose — see isSharedDevicePayment's doc comment in lib/payment.ts.
+  const isSharedDevice = isSharedDevicePayment(session);
+
+  // Whole-table payer covers computeSessionTotal in one transaction; this
+  // also degenerates correctly to computeBasketDue for a single-basket
+  // session, since every other basket contributes 0. Split-mode uses
+  // computeBasketDue (not computeBasketTotal) so a basket's total reflects
+  // its share of any items it's splitting with other baskets, not just the
+  // items it physically holds.
+  const total =
+    effectivePlan === 'single'
+      ? computeSessionTotal(session, menuItems)
+      : computeBasketDue(basket, session, menuItems);
+  const totalFormatted = `$${total.toFixed(2)} CAD`;
 
   // Baskets that still need to pay (excluding current basket and empty baskets)
   const unpaidCount = session.baskets.filter(
@@ -219,6 +254,7 @@ export default function CheckoutSheet({
           sessionId: session.id,
           basketId: basket.userId,
           paymentMode,
+          paymentPlan: session.paymentPlan,
         }),
       });
 
@@ -275,7 +311,40 @@ export default function CheckoutSheet({
     }
   }
 
-  // Initiate Interac Online payment (redirect-based flow)
+  // Serial same-device payment safety (#161): wallet/card buttons call this
+  // instead of initiatePayment directly. When isSharedDevice, this device
+  // could be passed between table members, so a lightweight tap-to-confirm
+  // ("Confirm you're paying {name}'s total of {amount}") is shown before the
+  // real charge fires. When !isSharedDevice, behavior is unchanged from
+  // before this issue — initiatePayment fires immediately.
+  function handlePayClick(paymentMode: 'wallet' | 'card') {
+    if (isSharedDevice) {
+      setPendingPaymentMode(paymentMode);
+      setView('confirm-identity');
+      return;
+    }
+    initiatePayment(paymentMode);
+  }
+
+  // "Yes, that's me" on the identity-confirm screen: return to the checkout
+  // view (so the Helcim iframe target div is mounted again) and fire the
+  // charge that was pending.
+  function handleConfirmIdentity() {
+    const mode = pendingPaymentMode;
+    setPendingPaymentMode(null);
+    setView('checkout');
+    if (mode) initiatePayment(mode);
+  }
+
+  // Declining/backing out of the identity-confirm screen must not initiate
+  // any charge — just return to the normal checkout view.
+  function handleDeclineIdentity() {
+    setPendingPaymentMode(null);
+    setView('checkout');
+  }
+
+  // Initiate Interac Online payment (redirect-based flow on a single-payer
+  // device; off-device link/QR when isSharedDevice — see #161)
   async function initiateInteracPayment() {
     if (interacState === 'loading') return;
     setInteracState('loading');
@@ -288,6 +357,7 @@ export default function CheckoutSheet({
           sessionId: session.id,
           basketId: basket.userId,
           paymentMode: 'interac',
+          paymentPlan: session.paymentPlan,
         }),
       });
 
@@ -302,7 +372,23 @@ export default function CheckoutSheet({
         return;
       }
 
-      // Redirect the browser to the bank's Interac Online page
+      if (isSharedDevice) {
+        // Don't leave this device's tab — surface a link/QR scoped to this
+        // basket (sessionId + basketId are already baked into redirectUrl)
+        // for the payer to open on their own device. The test-mode sentinel
+        // redirectUrl is a relative path, which is useless once scanned into
+        // a QR on a different device with no origin to resolve against, so
+        // it's resolved to an absolute URL first; a real Helcim redirect URL
+        // is already absolute and passes through unchanged.
+        const absoluteUrl = resolveAbsoluteUrl(data.redirectUrl, window.location.origin);
+        const qrDataUrl = await QRCode.toDataURL(absoluteUrl, { width: 400, margin: 2 });
+        setInteracLink({ url: absoluteUrl, qrDataUrl });
+        setInteracState('idle');
+        return;
+      }
+
+      // Single-payer session: redirect this device's tab to the bank's
+      // Interac Online page, exactly as before this issue.
       window.location.href = data.redirectUrl;
     } catch {
       setInteracState('error');
@@ -346,7 +432,13 @@ export default function CheckoutSheet({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={view === 'checkout' ? 'Checkout' : 'Payment confirmed'}
+        aria-label={
+          view === 'checkout'
+            ? 'Checkout'
+            : view === 'confirm-identity'
+              ? 'Confirm payment'
+              : 'Payment confirmed'
+        }
         className="fixed lg:absolute inset-0 z-50 bg-qraving-bg flex flex-col overflow-y-auto"
         style={{
           transform: visible ? 'translateY(0)' : 'translateY(100%)',
@@ -422,7 +514,7 @@ export default function CheckoutSheet({
                 <button
                   type="button"
                   disabled={loadState === 'loading'}
-                  onClick={() => initiatePayment('wallet')}
+                  onClick={() => handlePayClick('wallet')}
                   className="w-full py-3.5 rounded-xl bg-black text-white font-semibold text-base flex items-center justify-center gap-2 transition-opacity active:opacity-80 disabled:opacity-40"
                 >
                   {loadState === 'loading' ? (
@@ -454,7 +546,7 @@ export default function CheckoutSheet({
               <button
                 type="button"
                 disabled={loadState === 'loading'}
-                onClick={() => initiatePayment('wallet')}
+                onClick={() => handlePayClick('wallet')}
                 className="w-full py-3.5 rounded-xl bg-white border border-gray-300 text-gray-800 font-semibold text-base flex items-center justify-center gap-2 transition-opacity active:opacity-80 disabled:opacity-40"
               >
                 {loadState === 'loading' ? (
@@ -500,34 +592,68 @@ export default function CheckoutSheet({
                     <div className="flex-1 h-px bg-gray-200" />
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={interacState === 'loading'}
-                    onClick={initiateInteracPayment}
-                    className="w-full py-3.5 rounded-xl bg-[#D52B1E] text-white font-semibold text-base flex items-center justify-center gap-2 transition-opacity active:opacity-80 disabled:opacity-40"
-                  >
-                    {interacState === 'loading' ? (
-                      <>
-                        <Spinner />
-                        <span>Redirecting to bank…</span>
-                      </>
-                    ) : (
-                      <>
-                        {/* Interac wordmark (maple leaf silhouette) */}
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          width="20"
-                          height="20"
-                          aria-hidden="true"
-                          fill="white"
-                        >
-                          <path d="M12 2 L14.5 8 L21 8.5 L16 13 L17.5 20 L12 16.5 L6.5 20 L8 13 L3 8.5 L9.5 8 Z" />
-                        </svg>
-                        Pay with Interac Online
-                      </>
-                    )}
-                  </button>
+                  {interacLink ? (
+                    /* Shared-device (#161): don't redirect this tab — surface a
+                       link/QR scoped to this basket (sessionId + basketId are
+                       baked into the redirect URL) for the payer to open on
+                       their own device. */
+                    <div className="rounded-2xl border border-gray-200 bg-white p-5 flex flex-col items-center gap-3">
+                      <p className="text-sm font-semibold text-gray-800 text-center">
+                        Scan this on your own phone to pay {basket.name}&apos;s total via Interac
+                        Online
+                      </p>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={interacLink.qrDataUrl}
+                        alt="Interac Online payment QR code"
+                        className="w-40 h-40 rounded-lg"
+                      />
+                      <a
+                        href={interacLink.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-qraving-red font-semibold underline break-all text-center"
+                      >
+                        Open link instead
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => setInteracLink(null)}
+                        className="text-xs text-gray-400 active:opacity-60"
+                      >
+                        Back
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={interacState === 'loading'}
+                      onClick={initiateInteracPayment}
+                      className="w-full py-3.5 rounded-xl bg-[#D52B1E] text-white font-semibold text-base flex items-center justify-center gap-2 transition-opacity active:opacity-80 disabled:opacity-40"
+                    >
+                      {interacState === 'loading' ? (
+                        <>
+                          <Spinner />
+                          <span>{isSharedDevice ? 'Generating link…' : 'Redirecting to bank…'}</span>
+                        </>
+                      ) : (
+                        <>
+                          {/* Interac wordmark (maple leaf silhouette) */}
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            width="20"
+                            height="20"
+                            aria-hidden="true"
+                            fill="white"
+                          >
+                            <path d="M12 2 L14.5 8 L21 8.5 L16 13 L17.5 20 L12 16.5 L6.5 20 L8 13 L3 8.5 L9.5 8 Z" />
+                          </svg>
+                          Pay with Interac Online
+                        </>
+                      )}
+                    </button>
+                  )}
 
                   {interacState === 'error' && (
                     <div className="flex items-center justify-between gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
@@ -569,7 +695,7 @@ export default function CheckoutSheet({
               {loadState !== 'loading' && (
                 <button
                   type="button"
-                  onClick={() => initiatePayment('card')}
+                  onClick={() => handlePayClick('card')}
                   className="w-full py-3 rounded-xl bg-qraving-button text-qraving-text font-bold text-base transition-opacity active:opacity-80"
                 >
                   Pay by Card
@@ -593,6 +719,39 @@ export default function CheckoutSheet({
             >
               Cancel
             </button>
+          </div>
+        ) : view === 'confirm-identity' ? (
+          /* ── Identity-confirm view (#161: serial same-device payment safety) ──
+             Shown before initiatePayment() actually fires for wallet/card
+             whenever isSharedDevice — a lightweight tap-to-confirm, not a
+             re-entered phone number or PIN, so a phone passed between table
+             members can't accidentally charge the wrong person's basket. */
+          <div className="flex flex-col flex-1 items-center justify-center px-8 py-10 gap-6">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <h1 className="text-2xl font-bold text-gray-900">Confirm it&apos;s you</h1>
+              <p className="text-base text-gray-600">
+                Confirm you&apos;re paying{' '}
+                <span className="font-semibold text-gray-900">{basket.name}&apos;s</span> total of{' '}
+                <span className="font-semibold text-qraving-red">{totalFormatted}</span>
+              </p>
+            </div>
+
+            <div className="w-full flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={handleConfirmIdentity}
+                className="w-full py-3.5 rounded-xl bg-qraving-button text-qraving-text font-bold text-base transition-opacity active:opacity-80"
+              >
+                Yes, that&apos;s me
+              </button>
+              <button
+                type="button"
+                onClick={handleDeclineIdentity}
+                className="text-sm text-gray-400 text-center active:opacity-60"
+              >
+                Not me — go back
+              </button>
+            </div>
           </div>
         ) : (
           /* ── Confirmation view ── */

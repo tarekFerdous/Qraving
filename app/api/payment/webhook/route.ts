@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac } from 'node:crypto'
 import { getSession, setSession } from '@/lib/session-firestore'
-import { allBasketsPaid, computeBasketTotal } from '@/lib/payment'
+import { allBasketsPaid, applyWholeTablePayment, computeBasketTotal } from '@/lib/payment'
 import { getMenu } from '@/lib/menu'
 import type { UserBasket } from '@/lib/session'
 
@@ -64,25 +64,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true })
   }
 
-  const updatedBaskets = [...session.baskets]
+  let updatedSession: typeof session
 
-  if (status === 'approved') {
+  if (status === 'approved' && session.paymentPlan === 'single') {
+    // Whole-table payment: this one transaction covers every non-empty
+    // basket, so every basket gets marked paid with the same transaction id.
+    updatedSession = applyWholeTablePayment(session, transactionId, paymentMethod)
+    fireSmsReceipt(updatedSession.baskets[basketIndex], sessionId)
+  } else if (status === 'approved') {
+    const updatedBaskets = [...session.baskets]
     updatedBaskets[basketIndex] = {
       ...updatedBaskets[basketIndex],
       paymentStatus: 'paid',
       helcimTransactionId: transactionId,
       paymentMethod,
     }
-    fireSmsReceipt(updatedBaskets[basketIndex], sessionId)
+    updatedSession = { ...session, baskets: updatedBaskets }
+    fireSmsReceipt(updatedSession.baskets[basketIndex], sessionId)
   } else {
-    // declined
+    // declined — only the initiating basket failed; other baskets are
+    // untouched and can still be paid independently
+    const updatedBaskets = [...session.baskets]
     updatedBaskets[basketIndex] = {
       ...updatedBaskets[basketIndex],
       paymentStatus: 'failed',
     }
+    updatedSession = { ...session, baskets: updatedBaskets }
   }
-
-  let updatedSession = { ...session, baskets: updatedBaskets }
 
   // Advance to 'submitted' once every basket with items has been paid
   if (allBasketsPaid(updatedSession)) {

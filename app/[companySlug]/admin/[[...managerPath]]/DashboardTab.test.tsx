@@ -102,7 +102,7 @@ describe('DashboardTab', () => {
     expect(mockOnSnapshot).toHaveBeenCalledTimes(2);
     expect(mockCollection).toHaveBeenCalledWith({}, 'companies/company-1/branches/branch-1/sessions');
     expect(mockCollection).toHaveBeenCalledWith({}, 'companies/company-1/branches/branch-1/orders');
-    expect(mockWhere).toHaveBeenCalledWith('orderStatus', 'in', ['building', 'payment_pending']);
+    expect(mockWhere).toHaveBeenCalledWith('orderStatus', 'in', ['building', 'payment_pending', 'fully_paid']);
     expect(mockWhere).toHaveBeenCalledWith('status', '==', 'pending');
   });
 
@@ -130,6 +130,94 @@ describe('DashboardTab', () => {
     await waitFor(() => {
       expect(screen.getByText('sess-1')).toBeTruthy();
     });
+  });
+
+  it('shows a Free table action for a session that has not reached submitted, and calls updateDoc with orderStatus: submitted on click', async () => {
+    let sessionsCallback: ((snap: unknown) => void) | undefined;
+    mockOnSnapshot.mockImplementation((q, cb) => {
+      if (q.args[0].args[1] === 'companies/company-1/branches/branch-1/sessions') {
+        sessionsCallback = cb;
+      }
+      return vi.fn();
+    });
+
+    render(<DashboardTab {...baseProps} />);
+
+    sessionsCallback!(
+      snap([
+        {
+          id: 'sess-1',
+          data: () => ({ orderStatus: 'building', userCounter: 2 }),
+        },
+      ]),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Free table')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('Free table'));
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        { __type: 'doc', args: [{}, 'companies/company-1/branches/branch-1/sessions/sess-1'] },
+        { orderStatus: 'submitted' },
+      );
+    });
+  });
+
+  it('shows Free table for a fully_paid session (still short of submitted)', async () => {
+    let sessionsCallback: ((snap: unknown) => void) | undefined;
+    mockOnSnapshot.mockImplementation((q, cb) => {
+      if (q.args[0].args[1] === 'companies/company-1/branches/branch-1/sessions') {
+        sessionsCallback = cb;
+      }
+      return vi.fn();
+    });
+
+    render(<DashboardTab {...baseProps} />);
+
+    sessionsCallback!(
+      snap([
+        {
+          id: 'sess-2',
+          data: () => ({ orderStatus: 'fully_paid', userCounter: 1 }),
+        },
+      ]),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('sess-2')).toBeTruthy();
+    });
+    expect(screen.getByText('Free table')).toBeTruthy();
+  });
+
+  it('does not render Free table for a session that has already reached submitted', async () => {
+    let sessionsCallback: ((snap: unknown) => void) | undefined;
+    mockOnSnapshot.mockImplementation((q, cb) => {
+      if (q.args[0].args[1] === 'companies/company-1/branches/branch-1/sessions') {
+        sessionsCallback = cb;
+      }
+      return vi.fn();
+    });
+
+    render(<DashboardTab {...baseProps} />);
+
+    // A submitted session wouldn't normally come back from the 'in' query filter,
+    // but the button must still be defensively hidden if one ever shows up here.
+    sessionsCallback!(
+      snap([
+        {
+          id: 'sess-3',
+          data: () => ({ orderStatus: 'submitted', userCounter: 3 }),
+        },
+      ]),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('sess-3')).toBeTruthy();
+    });
+    expect(screen.queryByText('Free table')).toBeNull();
   });
 
   it('renders incoming orders and calls updateDoc with accepted status on Accept', async () => {
