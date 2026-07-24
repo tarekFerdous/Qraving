@@ -161,8 +161,13 @@ export async function hardDeleteCompany(companyId: string): Promise<void> {
     }),
   );
 
-  const bucket = getStorage().bucket(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET);
-  await bucket.deleteFiles({ prefix: `companies/${companyId}/` });
+  try {
+    const bucket = getStorage().bucket(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET);
+    await bucket.deleteFiles({ prefix: `companies/${companyId}/` });
+  } catch {
+    // Storage bucket may not be provisioned (e.g. project not yet upgraded to
+    // Blaze) — don't let a missing/inaccessible bucket block the rest of the purge.
+  }
 
   const companyRef = adminDb.doc(`companies/${companyId}`);
   await adminDb.recursiveDelete(companyRef);

@@ -180,6 +180,14 @@ describe('hardDeleteCompany', () => {
     await expect(hardDeleteCompany('company-1')).resolves.not.toThrow();
     expect(userDocs[0].ref.delete).toHaveBeenCalled();
   });
+
+  it('still purges Firestore and Auth data if the Storage bucket is missing/inaccessible', async () => {
+    const { deleteFiles, companyRef } = setup([]);
+    deleteFiles.mockRejectedValueOnce(new Error('The specified bucket does not exist.'));
+
+    await expect(hardDeleteCompany('company-1')).resolves.not.toThrow();
+    expect(adminDb.recursiveDelete).toHaveBeenCalledWith(companyRef);
+  });
 });
 
 type ManagerFixture = { id: string; disabled?: boolean; authLookupFails?: boolean };
