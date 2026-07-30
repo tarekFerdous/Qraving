@@ -10,6 +10,7 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:rules": "vitest run tests/firestore-rules.test.ts",
+    "test:menu-resolution": "vitest run tests/menu-publish-resolution.test.ts",
     "seed:superadmin": "ts-node scripts/seed-superadmin.ts"
   },
   "repository": {

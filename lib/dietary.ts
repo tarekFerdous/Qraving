@@ -25,6 +25,9 @@ export const DIETARY_ICONS: Record<DietaryTag, DietaryIcon> = {
   GlutenFree: { icon: '/dietary/gluten-free.svg', label: 'Gluten-Free' },
   LactoseFree: { icon: '/dietary/lactose-free.svg', label: 'Lactose-Free' },
   NutFree: { icon: '/dietary/nut-free.svg', label: 'Nut-Free' },
+  // No dedicated artwork yet — reuse the lactose-free icon as a placeholder
+  // per the PRD until real Dairy-Free artwork exists.
+  DairyFree: { icon: '/dietary/lactose-free.svg', label: 'Dairy-Free' },
 };
 
 /** Resolve a dietary tag to its icon asset + label. */

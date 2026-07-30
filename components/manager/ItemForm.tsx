@@ -105,8 +105,20 @@ export default function ItemForm({
   );
   const [imageUrl, setImageUrl] = useState<string | null>(item?.imageUrl ?? null);
   const [dietaryTags, setDietaryTags] = useState<string[]>(item?.dietaryTags ?? []);
-  const [showAllergenNote, setShowAllergenNote] = useState(Boolean(item?.allergenNote));
-  const [allergenNote, setAllergenNote] = useState(item?.allergenNote ?? '');
+  // Lazy conversion: if this item already has a tag list, use it. Otherwise, if it
+  // only has the old free-text allergen note, split it into tags once on mount so
+  // managers don't have to manually re-enter existing allergen info.
+  const [allergens, setAllergens] = useState<string[]>(() => {
+    if (item?.allergens && item.allergens.length > 0) return item.allergens;
+    if (item?.allergenNote) {
+      return item.allergenNote
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+    return [];
+  });
+  const [allergenInput, setAllergenInput] = useState('');
 
   // Customizations
   const [sizes, setSizes] = useState<CustomizationRow[]>(
@@ -165,6 +177,21 @@ export default function ItemForm({
     );
   }
 
+  // ── Allergen tag helpers ──────────────────────────────────────────────────────
+
+  const MAX_ALLERGENS = 50;
+
+  function addAllergen() {
+    const trimmed = allergenInput.trim();
+    if (!trimmed || allergens.length >= MAX_ALLERGENS) return;
+    setAllergens((prev) => [...prev, trimmed]);
+    setAllergenInput('');
+  }
+
+  function removeAllergen(index: number) {
+    setAllergens((prev) => prev.filter((_, i) => i !== index));
+  }
+
   // ── Customization helpers ─────────────────────────────────────────────────────
 
   function updateRow(
@@ -221,7 +248,7 @@ export default function ItemForm({
       available: item?.available ?? true,
       order: item?.order ?? 0,
       dietaryTags,
-      allergenNote: showAllergenNote && allergenNote.trim() ? allergenNote.trim() : null,
+      allergens,
       customizations,
     };
 
@@ -412,40 +439,56 @@ export default function ItemForm({
 
           {/* ── Allergen note ──────────────────────────────────────────────── */}
           <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => setShowAllergenNote((v) => !v)}
-              className="text-xs font-semibold text-gray-500 uppercase tracking-wide hover:text-gray-700 transition-colors flex items-center gap-1.5"
-            >
-              <span
-                className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
-                  showAllergenNote
-                    ? 'bg-gray-800 border-gray-800 text-white'
-                    : 'border-gray-300 bg-white'
-                }`}
-              >
-                {showAllergenNote && (
-                  <svg viewBox="0 0 10 8" fill="none" className="w-2.5 h-2">
-                    <path
-                      d="M1 4l3 3 5-6"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                )}
-              </span>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
               Allergen note
-            </button>
-            {showAllergenNote && (
+            </label>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                addAllergen();
+              }}
+              className="flex items-center gap-2"
+            >
               <input
                 type="text"
-                placeholder="e.g. Contains peanuts, shellfish"
-                value={allergenNote}
-                onChange={(e) => setAllergenNote(e.target.value)}
-                className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-300 bg-gray-50 placeholder-gray-400"
+                placeholder="e.g. Peanuts"
+                value={allergenInput}
+                onChange={(e) => setAllergenInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addAllergen();
+                  }
+                }}
+                className="flex-1 text-sm border border-gray-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-gray-300 bg-gray-50 placeholder-gray-400"
               />
+              <button
+                type="submit"
+                disabled={!allergenInput.trim() || allergens.length >= MAX_ALLERGENS}
+                className="text-xs font-semibold text-gray-700 border border-gray-200 rounded-xl px-3.5 py-2.5 hover:bg-gray-50 disabled:opacity-50 transition-colors shrink-0"
+              >
+                Add
+              </button>
+            </form>
+            {allergens.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {allergens.map((allergen, i) => (
+                  <span
+                    key={`${allergen}-${i}`}
+                    className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium border bg-red-50 text-red-700 border-red-200"
+                  >
+                    {allergen}
+                    <button
+                      type="button"
+                      onClick={() => removeAllergen(i)}
+                      aria-label={`Remove ${allergen}`}
+                      className="text-red-400 hover:text-red-600 transition-colors"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
             )}
           </div>
 

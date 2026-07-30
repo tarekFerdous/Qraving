@@ -310,6 +310,29 @@ export async function getNodeByQRCode(companyId: string, qrCode: string): Promis
   return { id: doc.id, ...(doc.data() as Omit<CompanyNode, 'id'>) };
 }
 
+/**
+ * Walks up a node's `parentId` chain to the top-level ancestor (the node
+ * with `parentId === null`) — i.e. the real "branch" node, regardless of how
+ * many intermediate hierarchy layers (e.g. "Area") sit between it and the
+ * scanned leaf node. Returns that ancestor's real Firestore doc id.
+ *
+ * If `nodeId` itself already has `parentId === null`, it is returned as-is.
+ * If a doc in the chain is missing (defensively, shouldn't happen for an
+ * active node), the walk stops and the last-known-good id is returned,
+ * mirroring `isNodeInBranch`'s defensive handling of a broken chain.
+ */
+export async function resolveBranchNodeId(companyId: string, nodeId: string): Promise<string> {
+  let currentId = nodeId;
+
+  while (true) {
+    const snap = await adminDb.doc(`companies/${companyId}/nodes/${currentId}`).get();
+    if (!snap.exists) return currentId;
+    const data = snap.data() as CompanyNode;
+    if (data.parentId === null) return currentId;
+    currentId = data.parentId;
+  }
+}
+
 export async function isNodeInBranch(companyId: string, nodeId: string, branchId: string): Promise<boolean> {
   let currentId: string | null = nodeId;
 

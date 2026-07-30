@@ -123,6 +123,123 @@ describe('computeBasketTotal', () => {
     // 2 * 8 + 3 * 0 = 16
     expect(computeBasketTotal(basket, menuItems)).toBe(16)
   })
+
+  it('adds a paid size delta into the line total', () => {
+    const basket = makeBasket({
+      items: [makeItem({ itemId: 'item-1', size: 'Large', quantity: 2 })],
+    })
+    const menuItems = [
+      makeMenuItem({
+        id: 'item-1',
+        price: 10,
+        customizations: {
+          sizes: [
+            { label: 'Medium', priceDelta: 0 },
+            { label: 'Large', priceDelta: 3 },
+          ],
+          addOns: [],
+        },
+      }),
+    ]
+    // (10 + 3) * 2 = 26
+    expect(computeBasketTotal(basket, menuItems)).toBe(26)
+  })
+
+  it('sums multiple paid add-on deltas into the line total', () => {
+    const basket = makeBasket({
+      items: [
+        makeItem({ itemId: 'item-1', addOns: ['Extra Cheese', 'Bacon'], quantity: 1 }),
+      ],
+    })
+    const menuItems = [
+      makeMenuItem({
+        id: 'item-1',
+        price: 10,
+        customizations: {
+          sizes: [],
+          addOns: [
+            { label: 'Extra Cheese', priceDelta: 1.5 },
+            { label: 'Bacon', priceDelta: 2 },
+          ],
+        },
+      }),
+    ]
+    // (10 + 1.5 + 2) * 1 = 13.5
+    expect(computeBasketTotal(basket, menuItems)).toBe(13.5)
+  })
+
+  it('sums a paid size delta and paid add-on deltas together', () => {
+    const basket = makeBasket({
+      items: [
+        makeItem({
+          itemId: 'item-1',
+          size: 'Large',
+          addOns: ['Extra Cheese', 'Bacon'],
+          quantity: 2,
+        }),
+      ],
+    })
+    const menuItems = [
+      makeMenuItem({
+        id: 'item-1',
+        price: 10,
+        customizations: {
+          sizes: [{ label: 'Large', priceDelta: 3 }],
+          addOns: [
+            { label: 'Extra Cheese', priceDelta: 1.5 },
+            { label: 'Bacon', priceDelta: 2 },
+          ],
+        },
+      }),
+    ]
+    // (10 + 3 + 1.5 + 2) * 2 = 33
+    expect(computeBasketTotal(basket, menuItems)).toBe(33)
+  })
+
+  it('is unaffected by a size/add-on selection with no matching customizations entry', () => {
+    const basket = makeBasket({
+      items: [makeItem({ itemId: 'item-1', size: 'Medium', addOns: [], quantity: 3 })],
+    })
+    const menuItems = [
+      makeMenuItem({
+        id: 'item-1',
+        price: 10,
+        customizations: {
+          sizes: [{ label: 'Large', priceDelta: 3 }],
+          addOns: [{ label: 'Extra Cheese', priceDelta: 1.5 }],
+        },
+      }),
+    ]
+    // 'Medium' has no matching sizes entry -> delta 0. 10 * 3 = 30
+    expect(computeBasketTotal(basket, menuItems)).toBe(30)
+  })
+
+  it('is unaffected when the menu item has no customizations at all', () => {
+    const basket = makeBasket({
+      items: [makeItem({ itemId: 'item-1', size: 'Medium', addOns: [], quantity: 3 })],
+    })
+    const menuItems = [makeMenuItem({ id: 'item-1', price: 10 })]
+    expect(computeBasketTotal(basket, menuItems)).toBe(30)
+  })
+
+  it('is unaffected by a free (zero-delta) size/add-on selection', () => {
+    const basket = makeBasket({
+      items: [
+        makeItem({ itemId: 'item-1', size: 'Small', addOns: ['No Ice'], quantity: 2 }),
+      ],
+    })
+    const menuItems = [
+      makeMenuItem({
+        id: 'item-1',
+        price: 10,
+        customizations: {
+          sizes: [{ label: 'Small', priceDelta: 0 }],
+          addOns: [{ label: 'No Ice', priceDelta: 0 }],
+        },
+      }),
+    ]
+    expect(computeBasketTotal(basket, menuItems)).toBe(20)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -258,6 +375,102 @@ describe('computeBasketDue', () => {
 
     expect(computeBasketDue(basket1, session, menuItems)).toBe(20)
     expect(computeBasketDue(basket2, session, menuItems)).toBe(0)
+  })
+
+  it('includes a paid size delta in a solo (non-shared) basket due amount', () => {
+    const basket = makeBasket({
+      userId: 'u1',
+      items: [makeItem({ itemId: 'item-1', size: 'Large', quantity: 2 })],
+    })
+    const menuItems = [
+      makeMenuItem({
+        id: 'item-1',
+        price: 10,
+        customizations: {
+          sizes: [{ label: 'Large', priceDelta: 3 }],
+          addOns: [],
+        },
+      }),
+    ]
+    const session = makeSession({ baskets: [basket] })
+    // (10 + 3) * 2 = 26
+    expect(computeBasketDue(basket, session, menuItems)).toBe(26)
+  })
+
+  it('includes paid add-on deltas in a solo (non-shared) basket due amount', () => {
+    const basket = makeBasket({
+      userId: 'u1',
+      items: [makeItem({ itemId: 'item-1', addOns: ['Extra Cheese', 'Bacon'], quantity: 1 })],
+    })
+    const menuItems = [
+      makeMenuItem({
+        id: 'item-1',
+        price: 10,
+        customizations: {
+          sizes: [],
+          addOns: [
+            { label: 'Extra Cheese', priceDelta: 1.5 },
+            { label: 'Bacon', priceDelta: 2 },
+          ],
+        },
+      }),
+    ]
+    const session = makeSession({ baskets: [basket] })
+    expect(computeBasketDue(basket, session, menuItems)).toBe(13.5)
+  })
+
+  it('includes both size and add-on deltas in a shared item cost before splitting across sharers', () => {
+    const menuItems = [
+      makeMenuItem({
+        id: 'dessert',
+        price: 20,
+        customizations: {
+          sizes: [{ label: 'Large', priceDelta: 4 }],
+          addOns: [{ label: 'Extra Sauce', priceDelta: 2 }],
+        },
+      }),
+    ]
+    const basket1 = makeBasket({
+      userId: 'u1',
+      items: [
+        makeItem({
+          itemId: 'dessert',
+          size: 'Large',
+          addOns: ['Extra Sauce'],
+          quantity: 1,
+          isShared: true,
+          sharerIds: ['u1', 'u2'],
+        }),
+      ],
+    })
+    const basket2 = makeBasket({ userId: 'u2', items: [] })
+    const session = makeSession({ baskets: [basket1, basket2] })
+
+    // itemCost = 20 + 4 + 2 = 26, split across 2 sharers = 13 each
+    expect(computeBasketDue(basket1, session, menuItems)).toBe(13)
+    expect(computeBasketDue(basket2, session, menuItems)).toBe(13)
+    expect(computeBasketDue(basket1, session, menuItems) + computeBasketDue(basket2, session, menuItems)).toBe(
+      computeSessionTotal(session, menuItems),
+    )
+  })
+
+  it('is unaffected by a free (zero-delta) customization in the due calculation', () => {
+    const basket = makeBasket({
+      userId: 'u1',
+      items: [makeItem({ itemId: 'item-1', size: 'Small', addOns: ['No Ice'], quantity: 2 })],
+    })
+    const menuItems = [
+      makeMenuItem({
+        id: 'item-1',
+        price: 10,
+        customizations: {
+          sizes: [{ label: 'Small', priceDelta: 0 }],
+          addOns: [{ label: 'No Ice', priceDelta: 0 }],
+        },
+      }),
+    ]
+    const session = makeSession({ baskets: [basket] })
+    expect(computeBasketDue(basket, session, menuItems)).toBe(20)
   })
 })
 

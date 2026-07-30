@@ -1,5 +1,5 @@
 import { getMenu, isMenuPublished } from '@/lib/menu';
-import { getCompanyBySlug, getNodeByQRCode } from '@/lib/company';
+import { getCompanyBySlug, getNodeByQRCode, resolveBranchNodeId } from '@/lib/company';
 import MenuPage from '@/components/MenuPage';
 import MenuNotAvailable from '@/components/MenuNotAvailable';
 import LocationNotFound from '@/components/LocationNotFound';
@@ -18,7 +18,6 @@ export default async function CatchAllPage({ params }: CatchAllPageProps) {
 
   const companySlug = path[0];
   const qrCode = path[path.length - 1];
-  const branch = path[1];
 
   const company = await getCompanyBySlug(companySlug);
   if (!company) {
@@ -34,18 +33,20 @@ export default async function CatchAllPage({ params }: CatchAllPageProps) {
     return <LocationNotFound />;
   }
 
-  const published = await isMenuPublished(companySlug, branch);
+  const branchId = await resolveBranchNodeId(company.id, node.id);
+
+  const published = await isMenuPublished(company.id, branchId);
   if (!published) {
     return <MenuNotAvailable />;
   }
 
-  const sections = await getMenu(companySlug, branch);
+  const sections = await getMenu(company.id, branchId);
 
   return (
     <MenuPage
       sections={sections}
-      company={companySlug}
-      branch={branch}
+      company={company.id}
+      branch={branchId}
       companyName={company.name}
       logoUrl={company.logoUrl}
     />

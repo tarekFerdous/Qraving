@@ -1,15 +1,31 @@
-import type { Session, UserBasket } from './session'
+import type { Session, UserBasket, BasketItem } from './session'
 import type { MenuItem } from './menu'
 
 /**
- * Sum of item.quantity * matching MenuItem.price for each BasketItem.
- * Items with no matching MenuItem are treated as price 0.
+ * Sum of a BasketItem's selected size and add-on price deltas, looked up by
+ * label from the matching MenuItem's customizations. Missing customizations,
+ * or a size/add-on label with no matching entry, contribute 0.
+ */
+function customizationDelta(item: BasketItem, menuItem: MenuItem | undefined): number {
+  if (!menuItem?.customizations) return 0
+  const sizeDelta = menuItem.customizations.sizes.find((s) => s.label === item.size)?.priceDelta ?? 0
+  const addOnsDelta = item.addOns.reduce((sum, label) => {
+    const delta = menuItem.customizations!.addOns.find((a) => a.label === label)?.priceDelta ?? 0
+    return sum + delta
+  }, 0)
+  return sizeDelta + addOnsDelta
+}
+
+/**
+ * Sum of item.quantity * (matching MenuItem.price + selected size/add-on
+ * price deltas) for each BasketItem. Items with no matching MenuItem are
+ * treated as price 0 (deltas still resolve to 0 via customizationDelta).
  */
 export function computeBasketTotal(basket: UserBasket, menuItems: MenuItem[]): number {
   return basket.items.reduce((total, item) => {
     const menuItem = menuItems.find((m) => m.id === item.itemId)
     const price = menuItem ? menuItem.price : 0
-    return total + price * item.quantity
+    return total + (price + customizationDelta(item, menuItem)) * item.quantity
   }, 0)
 }
 
@@ -81,7 +97,7 @@ export function computeBasketDue(
     const basketSubtotal = owningBasket.items.reduce((itemSubtotal, item) => {
       const menuItem = menuItems.find((m) => m.id === item.itemId)
       const price = menuItem ? menuItem.price : 0
-      const itemCost = price * item.quantity
+      const itemCost = (price + customizationDelta(item, menuItem)) * item.quantity
 
       if (!item.isShared || item.sharerIds === null) {
         // Not shared, or shared but unresolved: full cost stays on the

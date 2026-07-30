@@ -56,17 +56,43 @@ export default function MenuPage({ sections, company, branch, companyName, logoU
     }
   }, [itemsRemovedExternally, triggerRemovedToast, clearItemsRemovedExternally]);
 
+  // Availability lives per-item, nested under each category's `items`
+  // subcollection (companies/{company}/branches/{branch}/categories/{categoryId}/items),
+  // not in a single flat collection — so we watch one subcollection per
+  // category currently present in `sections` and merge their results into a
+  // single itemId -> available map.
+  const categoryIds = useMemo(() => sections.map((s) => s.id).join(','), [sections]);
+
   useEffect(() => {
-    const ref = collection(db, `companies/${company}/branches/${branch}/menuItems`);
-    const unsub = onSnapshot(ref, (snap) => {
-      const map = new Map<string, boolean>();
-      for (const doc of snap.docs) {
-        map.set(doc.id, (doc.data() as { isAvailable: boolean }).isAvailable);
-      }
-      setAvailabilityMap(map);
+    const ids = categoryIds ? categoryIds.split(',') : [];
+    const perCategoryAvailability = new Map<string, Map<string, boolean>>();
+
+    const unsubs = ids.map((categoryId) => {
+      const ref = collection(
+        db,
+        `companies/${company}/branches/${branch}/categories/${categoryId}/items`,
+      );
+      return onSnapshot(ref, (snap) => {
+        const map = new Map<string, boolean>();
+        for (const doc of snap.docs) {
+          map.set(doc.id, (doc.data() as { available: boolean }).available);
+        }
+        perCategoryAvailability.set(categoryId, map);
+
+        const merged = new Map<string, boolean>();
+        for (const catMap of perCategoryAvailability.values()) {
+          for (const [itemId, available] of catMap) {
+            merged.set(itemId, available);
+          }
+        }
+        setAvailabilityMap(merged);
+      });
     });
-    return unsub;
-  }, [company, branch]);
+
+    return () => {
+      unsubs.forEach((unsub) => unsub());
+    };
+  }, [company, branch, categoryIds]);
 
   // Persist menu to sessionStorage and pre-warm image cache on first render.
   // eslint-disable-next-line react-hooks/exhaustive-deps

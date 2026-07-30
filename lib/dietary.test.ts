@@ -11,6 +11,7 @@ const ALL_DIETARY_TAGS: DietaryTag[] = [
   'GlutenFree',
   'LactoseFree',
   'NutFree',
+  'DairyFree',
 ];
 
 const CANONICAL_LABELS: Record<DietaryTag, string> = {
@@ -21,6 +22,7 @@ const CANONICAL_LABELS: Record<DietaryTag, string> = {
   GlutenFree: 'Gluten-Free',
   LactoseFree: 'Lactose-Free',
   NutFree: 'Nut-Free',
+  DairyFree: 'Dairy-Free',
 };
 
 describe('dietary-icon registry', () => {
@@ -45,8 +47,11 @@ describe('dietary-icon registry', () => {
     expect(Object.keys(DIETARY_ICONS).sort()).toEqual([...ALL_DIETARY_TAGS].sort());
   });
 
-  it('points every tag at a distinct icon asset', () => {
-    const assets = ALL_DIETARY_TAGS.map((t) => getDietaryIcon(t).icon);
-    expect(new Set(assets).size).toBe(ALL_DIETARY_TAGS.length);
+  it('points every tag at a distinct icon asset, except DairyFree which intentionally reuses the LactoseFree placeholder pending real artwork', () => {
+    const tagsWithDedicatedArt = ALL_DIETARY_TAGS.filter((t) => t !== 'DairyFree');
+    const assets = tagsWithDedicatedArt.map((t) => getDietaryIcon(t).icon);
+    expect(new Set(assets).size).toBe(tagsWithDedicatedArt.length);
+
+    expect(getDietaryIcon('DairyFree').icon).toBe(getDietaryIcon('LactoseFree').icon);
   });
 });

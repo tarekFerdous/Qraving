@@ -47,7 +47,11 @@ export interface MenuItem {
   available: boolean;
   order: number;
   dietaryTags: string[]; // ["vegan","vegetarian","halal","gluten-free","nut-free","dairy-free"]
-  allergenNote: string | null;
+  /** @deprecated Legacy free-text allergen note. Retained for reading old docs that
+   * predate the `allergens` tag list; new writes should populate `allergens` instead
+   * and omit this field entirely. */
+  allergenNote?: string | null;
+  allergens: string[];
   customizations: Customizations;
   createdAt: Timestamp;
   updatedAt: Timestamp;
