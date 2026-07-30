@@ -2,8 +2,12 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { X, Trash2, Plus, ImageIcon, Loader2 } from 'lucide-react';
-import { upload } from '@vercel/blob/client';
+import { put } from '@vercel/blob/client';
 import { createItem, updateItem, MenuItem, Customizations } from '@/lib/manager-menu';
+import { requestUploadClientToken, messageForUploadErrorReason } from '@/lib/upload-client';
+import { compressImageFile } from '@/lib/image-compression';
+
+const MAX_ITEM_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -149,19 +153,44 @@ export default function ItemForm({
       setUploadError(null);
       setUploadProgress(0);
 
+      let fileToUpload: File = file;
+      if (file.size > MAX_ITEM_IMAGE_SIZE_BYTES) {
+        fileToUpload = await compressImageFile(file, MAX_ITEM_IMAGE_SIZE_BYTES);
+        if (fileToUpload.size > MAX_ITEM_IMAGE_SIZE_BYTES) {
+          setUploadError(messageForUploadErrorReason('invalid_file'));
+          setUploadProgress(null);
+          return;
+        }
+      }
+
       const itemId = item?.id ?? 'new';
       const pathname = `companies/${companyId}/branches/${branchId}/items/${itemId}/${file.name}`;
 
+      // upload() can't be used here: on a non-2xx response from our token
+      // route it throws a fixed generic error and discards the response
+      // body, so we can't read the `reason` field it returns. Fetch the
+      // client token ourselves, then hand it to the lower-level put().
+      const tokenResult = await requestUploadClientToken(
+        `/api/admin/companies/${companyId}/items/upload`,
+        pathname,
+      );
+
+      if (!tokenResult.ok) {
+        setUploadError(messageForUploadErrorReason(tokenResult.reason));
+        setUploadProgress(null);
+        return;
+      }
+
       try {
-        const blob = await upload(pathname, file, {
+        const blob = await put(pathname, fileToUpload, {
           access: 'public',
-          handleUploadUrl: `/api/admin/companies/${companyId}/items/upload`,
+          token: tokenResult.clientToken,
           onUploadProgress: ({ percentage }) => setUploadProgress(Math.round(percentage)),
         });
         setImageUrl(blob.url);
       } catch (error) {
         console.error('Upload error:', error);
-        setUploadError('Upload failed. Please try again.');
+        setUploadError(messageForUploadErrorReason('unknown'));
       } finally {
         setUploadProgress(null);
       }

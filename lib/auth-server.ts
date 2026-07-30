@@ -23,6 +23,31 @@ export async function requireRole(
   }
 }
 
+export async function getSessionUser(): Promise<{
+  uid: string;
+  email: string;
+  role?: string;
+  companyId?: string;
+  branchId?: string;
+} | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('firebase-token')?.value;
+  if (!token) return null;
+
+  try {
+    const decoded = await getAuth().verifyIdToken(token);
+    return {
+      uid: decoded.uid,
+      email: decoded.email ?? '',
+      role: decoded.role,
+      companyId: decoded.companyId,
+      branchId: decoded.branchId,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function getUserDoc(uid: string) {
   const snap = await adminDb.doc(`users/${uid}`).get();
   return snap.data() ?? null;

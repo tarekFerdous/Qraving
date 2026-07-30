@@ -2,7 +2,8 @@
 
 import { useState, useRef } from 'react';
 import { ImageIcon, Loader2 } from 'lucide-react';
-import { upload } from '@vercel/blob/client';
+import { put } from '@vercel/blob/client';
+import { requestUploadClientToken, messageForUploadErrorReason } from '@/lib/upload-client';
 
 const MAX_LOGO_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
@@ -63,16 +64,33 @@ export function CompanyLogoSection({
 
     setUploadProgress(0);
 
+    const pathname = `companies/${companyId}/logo/${file.name}`;
+
+    // upload() can't be used here: on a non-2xx response from our token
+    // route it throws a fixed generic error and discards the response
+    // body, so we can't read the `reason` field it returns. Fetch the
+    // client token ourselves, then hand it to the lower-level put().
+    const tokenResult = await requestUploadClientToken(
+      `/api/admin/companies/${companyId}/logo/upload`,
+      pathname,
+    );
+
+    if (!tokenResult.ok) {
+      setError(messageForUploadErrorReason(tokenResult.reason));
+      setUploadProgress(null);
+      return;
+    }
+
     try {
-      const blob = await upload(`companies/${companyId}/logo/${file.name}`, file, {
+      const blob = await put(pathname, file, {
         access: 'public',
-        handleUploadUrl: `/api/admin/companies/${companyId}/logo/upload`,
+        token: tokenResult.clientToken,
         onUploadProgress: ({ percentage }) => setUploadProgress(Math.round(percentage)),
       });
       await persistLogo(blob.url);
     } catch (err) {
       console.error('Logo upload error:', err);
-      setError('Upload failed. Please try again.');
+      setError(messageForUploadErrorReason('unknown'));
     } finally {
       setUploadProgress(null);
     }
