@@ -10,6 +10,7 @@ import {
   updateItemSharers,
   hasUnresolvedSharedItems,
   isSessionClosed,
+  partitionBasketsForReset,
 } from './session'
 import type { Session, UserBasket, BasketItem } from './session'
 
@@ -451,5 +452,70 @@ describe('isSessionClosed', () => {
   it('returns false when orderStatus is rejected', () => {
     const session = makeSession({ orderStatus: 'rejected' })
     expect(isSessionClosed(session)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// partitionBasketsForReset
+// ---------------------------------------------------------------------------
+
+describe('partitionBasketsForReset', () => {
+  it('returns empty buckets for an empty basket list', () => {
+    expect(partitionBasketsForReset([])).toEqual({
+      toDelete: [],
+      toArchive: [],
+      toKeep: [],
+    })
+  })
+
+  it('buckets all-pending baskets into toDelete', () => {
+    const baskets = [
+      makeBasket({ userId: 'u1', paymentStatus: 'pending' }),
+      makeBasket({ userId: 'u2', paymentStatus: 'pending' }),
+    ]
+    expect(partitionBasketsForReset(baskets)).toEqual({
+      toDelete: ['u1', 'u2'],
+      toArchive: [],
+      toKeep: [],
+    })
+  })
+
+  it('buckets all-paid baskets into toArchive', () => {
+    const baskets = [
+      makeBasket({ userId: 'u1', paymentStatus: 'paid' }),
+      makeBasket({ userId: 'u2', paymentStatus: 'paid' }),
+    ]
+    expect(partitionBasketsForReset(baskets)).toEqual({
+      toDelete: [],
+      toArchive: ['u1', 'u2'],
+      toKeep: [],
+    })
+  })
+
+  it('buckets all-failed baskets into toKeep', () => {
+    const baskets = [
+      makeBasket({ userId: 'u1', paymentStatus: 'failed' }),
+      makeBasket({ userId: 'u2', paymentStatus: 'failed' }),
+    ]
+    expect(partitionBasketsForReset(baskets)).toEqual({
+      toDelete: [],
+      toArchive: [],
+      toKeep: ['u1', 'u2'],
+    })
+  })
+
+  it('buckets a mixed basket list by paymentStatus, preserving input order within each bucket', () => {
+    const baskets = [
+      makeBasket({ userId: 'u1', paymentStatus: 'pending' }),
+      makeBasket({ userId: 'u2', paymentStatus: 'paid' }),
+      makeBasket({ userId: 'u3', paymentStatus: 'failed' }),
+      makeBasket({ userId: 'u4', paymentStatus: 'pending' }),
+      makeBasket({ userId: 'u5', paymentStatus: 'paid' }),
+    ]
+    expect(partitionBasketsForReset(baskets)).toEqual({
+      toDelete: ['u1', 'u4'],
+      toArchive: ['u2', 'u5'],
+      toKeep: ['u3'],
+    })
   })
 })

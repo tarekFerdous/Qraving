@@ -185,3 +185,40 @@ export function hasUnresolvedSharedItems(basket: UserBasket): boolean {
 export function isSessionClosed(session: Session): boolean {
   return session.orderStatus === 'submitted'
 }
+
+/**
+ * Partitions a session's live baskets by paymentStatus for a "Reset Session"
+ * developer tool, so a fresh session's `baskets` subcollection can be
+ * cleaned up without silently discarding baskets a diner still needs to pay:
+ *   - 'pending' (draft, never taken to checkout): hard-deleted — nothing was
+ *     paid or attempted, so there's nothing worth keeping.
+ *   - 'paid': archived (moved out of the live baskets subcollection, e.g. to
+ *     `sessions/{id}/archivedBaskets/{userId}`) so the record is preserved
+ *     but no longer visible to the fresh session.
+ *   - 'failed': left untouched in the live subcollection — the app keeps
+ *     prompting that diner to pay; only a future, separate "cancel payment"
+ *     action (out of scope here) may remove those.
+ * Pure — returns the userIds bucketed by action; callers perform the actual
+ * Firestore deletes/writes.
+ */
+export function partitionBasketsForReset(baskets: UserBasket[]): {
+  toDelete: string[]
+  toArchive: string[]
+  toKeep: string[]
+} {
+  const toDelete: string[] = []
+  const toArchive: string[] = []
+  const toKeep: string[] = []
+
+  for (const basket of baskets) {
+    if (basket.paymentStatus === 'pending') {
+      toDelete.push(basket.userId)
+    } else if (basket.paymentStatus === 'paid') {
+      toArchive.push(basket.userId)
+    } else {
+      toKeep.push(basket.userId)
+    }
+  }
+
+  return { toDelete, toArchive, toKeep }
+}

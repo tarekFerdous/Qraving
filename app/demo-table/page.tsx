@@ -8,6 +8,7 @@ export default async function DemoTablePage() {
       sections={sections}
       company="demo-company"
       branch="demo-branch"
+      table="demo-table-1"
       companyName="Demo Restaurant"
     />
   );

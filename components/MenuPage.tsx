@@ -11,7 +11,7 @@ import BasketsSheet from '@/components/BasketsSheet';
 import CheckoutSheet from '@/components/CheckoutSheet';
 import PaymentPlanSheet from '@/components/PaymentPlanSheet';
 import SharerSelectionSheet from '@/components/SharerSelectionSheet';
-import { useSession } from '@/lib/session-context';
+import { useSession, SessionProvider } from '@/lib/session-context';
 import { useRemovedItemsToast } from '@/components/RemovedItemsToast';
 import { isSessionClosed, hasUnresolvedSharedItems, updateItemSharers, UserBasket } from '@/lib/session';
 import Image from 'next/image';
@@ -20,11 +20,32 @@ interface MenuPageProps {
   sections: MenuSection[];
   company: string;
   branch: string;
+  table: string;
   companyName: string;
   logoUrl?: string;
 }
 
-export default function MenuPage({ sections, company, branch, companyName, logoUrl }: MenuPageProps) {
+export default function MenuPage({ sections, company, branch, table, companyName, logoUrl }: MenuPageProps) {
+  return (
+    <SessionProvider company={company} branch={branch} table={table}>
+      <MenuPageInner
+        sections={sections}
+        company={company}
+        branch={branch}
+        companyName={companyName}
+        logoUrl={logoUrl}
+      />
+    </SessionProvider>
+  );
+}
+
+function MenuPageInner({
+  sections,
+  company,
+  branch,
+  companyName,
+  logoUrl,
+}: Omit<MenuPageProps, 'table'>) {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [logoError, setLogoError] = useState(false);
   const [basketsOpen, setBasketsOpen] = useState(false);

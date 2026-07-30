@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import "./globals.css";
-import { SessionProvider } from "@/lib/session-context";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -24,9 +23,7 @@ export default function RootLayout({
     <html lang="en" className={`h-full ${poppins.className}`}>
       <body className="h-full bg-white antialiased">
         <div className="lg:max-w-[640px] lg:mx-auto lg:relative lg:h-full">
-          <SessionProvider>
-            {children}
-          </SessionProvider>
+          {children}
         </div>
       </body>
     </html>

@@ -6,6 +6,7 @@
 // the Qraving/venue separator changed from "-" to "×".
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import type { ReactNode } from 'react';
 
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn(() => ({})),
@@ -25,6 +26,7 @@ vi.mock('@/lib/session-context', () => ({
     itemsRemovedExternally: false,
     clearItemsRemovedExternally: vi.fn(),
   }),
+  SessionProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
 vi.mock('@/components/RemovedItemsToast', () => ({
@@ -44,6 +46,7 @@ const baseProps = {
   sections: [],
   company: 'test-co',
   branch: 'branch-1',
+  table: 'table-1',
 };
 
 afterEach(() => {

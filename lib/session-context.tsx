@@ -1,13 +1,9 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
-import { doc, collection, onSnapshot, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, collection, onSnapshot, setDoc, deleteDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase-client';
-import { Session, UserBasket, createSession } from '@/lib/session';
-
-const SESSION_ID = 'demo-table-1';
-const SESSION_DOC = 'companies/demo-company/branches/demo-branch/sessions/demo-table-1';
-const BASKETS_COL = `${SESSION_DOC}/baskets`;
+import { Session, UserBasket, createSession, partitionBasketsForReset } from '@/lib/session';
 
 interface SessionContextValue {
   session: Session;
@@ -23,8 +19,22 @@ interface SessionContextValue {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
-export function SessionProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session>(() => createSession(SESSION_ID));
+export function SessionProvider({
+  company,
+  branch,
+  table,
+  children,
+}: {
+  company: string;
+  branch: string;
+  table: string;
+  children: ReactNode;
+}) {
+  const sessionDoc = `companies/${company}/branches/${branch}/sessions/${table}`;
+  const basketsCol = `${sessionDoc}/baskets`;
+  const archivedBasketsCol = `${sessionDoc}/archivedBaskets`;
+
+  const [session, setSession] = useState<Session>(() => createSession(table));
   const [isExpired, setIsExpired] = useState(false);
   const [itemsRemovedExternally, setItemsRemovedExternally] = useState(false);
 
@@ -39,8 +49,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const suppressUntilRef = useRef<number>(0);
 
   useEffect(() => {
-    const sessionRef = doc(db, SESSION_DOC);
-    const basketsRef = collection(db, BASKETS_COL);
+    const sessionRef = doc(db, sessionDoc);
+    const basketsRef = collection(db, basketsCol);
 
     const unsubSession = onSnapshot(sessionRef, (snap) => {
       if (!snap.exists()) return;
@@ -93,20 +103,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       unsubBaskets();
       if (expiryTimer.current) clearTimeout(expiryTimer.current);
     };
-  }, []);
+  }, [sessionDoc, basketsCol]);
 
   const resetSession = useCallback(() => {
     if (expiryTimer.current) clearTimeout(expiryTimer.current);
     setIsExpired(false);
-    const fresh = createSession(SESSION_ID);
+    const fresh = createSession(table);
     setSession(fresh);
     prevItemCountRef.current = -1;
-    const sessionRef = doc(db, SESSION_DOC);
+
+    const sessionRef = doc(db, sessionDoc);
     setDoc(
       sessionRef,
       {
         userCounter: 0,
-        orderStatus: 'pending',
+        orderStatus: 'building',
         paymentDeadline: null,
         paymentPlan: null,
         lastActivity: serverTimestamp(),
@@ -114,7 +125,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
       { merge: true },
     ).catch(() => {});
-  }, []);
+
+    // Clean up the live baskets subcollection by paymentStatus: drafts are
+    // discarded, paid baskets are archived (preserved but hidden from the
+    // fresh session), and failed-payment baskets are left untouched so the
+    // app keeps prompting that diner to pay.
+    const { toDelete, toArchive } = partitionBasketsForReset(session.baskets);
+
+    for (const userId of toDelete) {
+      deleteDoc(doc(db, basketsCol, userId)).catch(() => {});
+    }
+
+    for (const userId of toArchive) {
+      const basket = session.baskets.find((b) => b.userId === userId);
+      if (!basket) continue;
+      const { userId: _userId, ...data } = basket;
+      setDoc(doc(db, archivedBasketsCol, userId), data)
+        .then(() => deleteDoc(doc(db, basketsCol, userId)))
+        .catch(() => {});
+    }
+  }, [table, sessionDoc, basketsCol, archivedBasketsCol, session.baskets]);
 
   const updateSession = useCallback((s: Session) => {
     // Suppress the external-removal toast for 1.5 s after any local write so
@@ -122,7 +152,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     suppressUntilRef.current = Date.now() + 1500;
 
     setSession(s);
-    const sessionRef = doc(db, SESSION_DOC);
+    const sessionRef = doc(db, sessionDoc);
 
     setDoc(
       sessionRef,
@@ -139,7 +169,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     for (const basket of s.baskets) {
       const { userId, ...data } = basket;
-      setDoc(doc(db, BASKETS_COL, userId), data).catch(() => {});
+      setDoc(doc(db, basketsCol, userId), data).catch(() => {});
     }
 
     if (s.baskets.length > 0) {
@@ -153,7 +183,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         { merge: true },
       ).catch(() => {});
     }
-  }, []);
+  }, [sessionDoc, basketsCol]);
 
   const clearItemsRemovedExternally = useCallback(() => {
     setItemsRemovedExternally(false);

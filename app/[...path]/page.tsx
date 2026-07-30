@@ -47,6 +47,7 @@ export default async function CatchAllPage({ params }: CatchAllPageProps) {
       sections={sections}
       company={company.id}
       branch={branchId}
+      table={node.id}
       companyName={company.name}
       logoUrl={company.logoUrl}
     />

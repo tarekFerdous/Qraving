@@ -88,6 +88,7 @@ describe('CatchAllPage ([...path])', () => {
 
     expect(rendered.__mockMenuPage).toBe(true);
     expect(rendered.props.companyName).toBe('Test Co');
+    expect(rendered.props.table).toBe('node-1');
   });
 
   it('shows MenuNotAvailable when publish check fails using URL slugs instead of resolved ids (regression guard)', async () => {
@@ -137,6 +138,7 @@ describe('CatchAllPage ([...path])', () => {
     expect(rendered.__mockMenuPage).toBe(true);
     expect(rendered.props.company).toBe('company-1');
     expect(rendered.props.branch).toBe('branch-node-1');
+    expect(rendered.props.table).toBe('table-node-99');
   });
 
   it('renders MenuNotAvailable for a multi-level hierarchy when the resolved branch menu is unpublished', async () => {

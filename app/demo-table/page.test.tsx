@@ -32,6 +32,7 @@ describe('/demo-table page (#167)', () => {
       logoUrl?: string;
       company: string;
       branch: string;
+      table: string;
     }>;
 
     expect(element.type).toBe(MenuPage);
@@ -39,5 +40,6 @@ describe('/demo-table page (#167)', () => {
     expect(element.props.logoUrl).toBeUndefined();
     expect(element.props.company).toBe('demo-company');
     expect(element.props.branch).toBe('demo-branch');
+    expect(element.props.table).toBe('demo-table-1');
   });
 });
