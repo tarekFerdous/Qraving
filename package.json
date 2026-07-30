@@ -11,6 +11,8 @@
     "test": "vitest run",
     "test:rules": "vitest run tests/firestore-rules.test.ts",
     "test:menu-resolution": "vitest run tests/menu-publish-resolution.test.ts",
+    "test:orders-write-path": "vitest run tests/orders-write-path.test.ts",
+    "test:middleware-guard": "vitest run tests/middleware-branch-admin-guard.test.ts",
     "seed:superadmin": "ts-node scripts/seed-superadmin.ts"
   },
   "repository": {

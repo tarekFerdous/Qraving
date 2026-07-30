@@ -362,6 +362,73 @@ export async function teardownAdminTestFixture(fixture: AdminTestFixture): Promi
   ]);
 }
 
+// ─── Superadmin / unprivileged fixtures (#185) ─────────────────────────────
+// Minimal disposable Firebase Auth users for exercising the branch-admin
+// route guard's role checks in middleware.ts directly, without needing a
+// seeded company (middleware only inspects the token's `role` claim — it
+// doesn't scope a superadmin to a specific company/branch, that's the page
+// component's job). Mirrors the manager fixture above as closely as
+// possible: same run-id scoping, same best-effort teardown.
+
+export interface RoleTestFixture {
+  uid: string;
+  email: string;
+}
+
+async function createRoleTestUser(
+  role: 'superadmin' | null,
+  namePrefix: string,
+): Promise<RoleTestFixture> {
+  const { adminDb, getAuth, Timestamp } = await loadFirebaseAdminModules();
+
+  const runId = uniqueRunId();
+  const email = `${namePrefix}-${runId}@qraving-test.invalid`;
+  const password = `Test-${randomBytes(9).toString('base64url')}`;
+
+  const adminAuth = getAuth();
+  const user = await adminAuth.createUser({ email, password });
+  const uid = user.uid;
+
+  if (role) {
+    await adminAuth.setCustomUserClaims(uid, { role });
+  }
+
+  await adminDb.doc(`users/${uid}`).set({
+    role,
+    email,
+    companyId: null,
+    branchId: null,
+    companySlug: null,
+    createdAt: Timestamp.now(),
+  });
+
+  return { uid, email };
+}
+
+/** Creates a disposable `role: 'superadmin'` Firebase Auth user (no
+ *  company/branch scoping — superadmin isn't scoped to one). */
+export async function seedSuperadminTestFixture(): Promise<RoleTestFixture> {
+  return createRoleTestUser('superadmin', 'e2e-superadmin');
+}
+
+/** Creates a disposable, fully-authenticated Firebase Auth user with no
+ *  `role` custom claim at all — a legitimately-denied user for the
+ *  branch-admin route gate (real session, just not manager/superadmin). */
+export async function seedUnprivilegedTestFixture(): Promise<RoleTestFixture> {
+  return createRoleTestUser(null, 'e2e-norole');
+}
+
+/** Tears down a fixture created by `seedSuperadminTestFixture` or
+ *  `seedUnprivilegedTestFixture`. Safe to call even if some pieces were
+ *  already removed. */
+export async function teardownRoleTestFixture(fixture: RoleTestFixture): Promise<void> {
+  const { adminDb, getAuth } = await loadFirebaseAdminModules();
+  await Promise.allSettled([
+    adminDb.doc(`users/${fixture.uid}`).delete(),
+    getAuth().deleteUser(fixture.uid),
+  ]);
+}
+
 // ─── Auth: minting and injecting a real ID token ───────────────────────────
 
 /**
@@ -372,7 +439,7 @@ export async function teardownAdminTestFixture(fixture: AdminTestFixture): Promi
  * request) — safe to drop straight into the `firebase-token` cookie that
  * `requireRole()` (lib/auth-server.ts) verifies server-side.
  */
-async function mintIdToken(uid: string): Promise<string> {
+export async function mintIdToken(uid: string): Promise<string> {
   const { getAuth } = await loadFirebaseAdminModules();
 
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;

@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAuth, type DecodedIdToken } from 'firebase-admin/auth';
+// Imported for its side effect only: initializes the shared firebase-admin
+// app (see lib/firebase-admin.ts) so getAuth() below resolves the default
+// app, exactly like lib/auth-server.ts does.
+import '@/lib/firebase-admin';
+
+// Middleware needs the Firebase Admin SDK (Node.js-only) to verify ID token
+// signature + expiry server-side, so it must run in the Node.js runtime
+// rather than the default Edge runtime. Node.js Middleware is fully
+// supported on Vercel (Fluid Compute/Node.js is the platform default).
+export const runtime = 'nodejs';
 
 const ADMIN_ROOT = '/qraving-admin-panel';
 const ADMIN_LOGIN = '/qraving-admin-panel/login';
-
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = payload + '=='.slice(0, (4 - (payload.length % 4)) % 4);
-    return JSON.parse(atob(padded));
-  } catch {
-    return null;
-  }
-}
+const ACCESS_DENIED = '/access-denied';
 
 function isManagerRoute(pathname: string): boolean {
   if (pathname.startsWith('/qraving-admin-panel')) return false;
@@ -22,12 +22,30 @@ function isManagerRoute(pathname: string): boolean {
   return parts.length >= 2 && parts[1] === 'admin';
 }
 
-export function middleware(req: NextRequest) {
+/**
+ * Verifies the `firebase-token` cookie's signature and expiry server-side via
+ * the Firebase Admin SDK — the same pattern `requireRole`/`getSessionUser`
+ * use in lib/auth-server.ts. Returns `null` for a missing, expired, or
+ * tampered token (never throws).
+ */
+async function verifyFirebaseToken(
+  token: string | undefined,
+): Promise<DecodedIdToken | null> {
+  if (!token) return null;
+  try {
+    return await getAuth().verifyIdToken(token);
+  } catch {
+    return null;
+  }
+}
+
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get('firebase-token')?.value;
-  const claims = token ? decodeJwtPayload(token) : null;
+  const claims = await verifyFirebaseToken(token);
 
   const isSuperadmin = claims?.role === 'superadmin';
+  const isManager = claims?.role === 'manager';
 
   if (pathname.startsWith(ADMIN_ROOT) && !pathname.startsWith(ADMIN_LOGIN)) {
     if (!isSuperadmin) {
@@ -44,11 +62,17 @@ export function middleware(req: NextRequest) {
     const companySlug = parts[0];
     const loginPath = `/${companySlug}/login`;
 
+    // Missing, expired, or tampered token: bounce to this branch's login,
+    // never a "Forbidden" response.
     if (!claims) {
       return NextResponse.redirect(new URL(loginPath, req.url));
     }
-    if (claims.role !== 'manager') {
-      return new NextResponse('Forbidden', { status: 403 });
+    // Matches app/[companySlug]/admin/[[...managerPath]]/page.tsx, which
+    // authorizes via `requireRole('superadmin') || requireRole('manager')`
+    // — both roles pass the route gate; the page itself further scopes a
+    // manager to their own branch and a superadmin to the requested node.
+    if (!isManager && !isSuperadmin) {
+      return NextResponse.redirect(new URL(ACCESS_DENIED, req.url));
     }
   }
 

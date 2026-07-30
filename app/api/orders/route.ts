@@ -35,7 +35,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  const orderRef = adminDb.collection('orders').doc()
+  const orderRef = adminDb
+    .collection(`companies/${companyId}/branches/${branchId}/orders`)
+    .doc()
   await orderRef.set({
     companyId,
     branchId,
