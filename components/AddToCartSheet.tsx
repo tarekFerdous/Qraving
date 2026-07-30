@@ -47,11 +47,12 @@ type TurnIdentity = {
 let turnState: TurnIdentity | null = null;
 
 // ---------------------------------------------------------------------------
-// Constants
+// Helpers
 // ---------------------------------------------------------------------------
 
-const SIZES = ['Small', 'Medium', 'Large'] as const;
-const ADD_ONS = ['Extra Sauce', 'Double Portion', 'Extra Cheese', 'No Ice'] as const;
+function formatPriceDelta(delta: number): string {
+  return delta >= 0 ? `+$${delta.toFixed(2)}` : `-$${Math.abs(delta).toFixed(2)}`;
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -71,7 +72,7 @@ export default function AddToCartSheet({
   const [step, setStep] = useState<'customise' | 'identity' | 'actions'>('customise');
 
   // --- Customisation state ---
-  const [selectedSize, setSelectedSize] = useState<'Small' | 'Medium' | 'Large'>('Medium');
+  const [selectedSize, setSelectedSize] = useState<string>('');
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
   const [instructions, setInstructions] = useState('');
   // "Share this item" — no sharer selection required yet; who's sharing is
@@ -106,7 +107,7 @@ export default function AddToCartSheet({
   // ── Open / reset when item changes ──
   useEffect(() => {
     if (item) {
-      setSelectedSize('Medium');
+      setSelectedSize(item.customizations?.sizes[0]?.label ?? '');
       setSelectedAddOns([]);
       setInstructions('');
       setIsShared(false);
@@ -364,6 +365,12 @@ export default function AddToCartSheet({
     : null;
   const editBasketName = editBasket?.name ?? 'User';
 
+  // Configured customisations for the current item (customise step only —
+  // item is non-null there, same as existing `item!` usages below).
+  const sizes = item?.customizations?.sizes ?? [];
+  const addOns = item?.customizations?.addOns ?? [];
+  const showSpecialInstructions = item?.customizations?.specialInstructions === true;
+
   return (
     <>
       {/* Backdrop */}
@@ -549,70 +556,78 @@ export default function AddToCartSheet({
 
             <div className="px-4 pb-6 flex flex-col gap-6 mt-2">
               {/* Size selector */}
-              <section>
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-                  Size
-                </h3>
-                <div className="flex gap-2">
-                  {SIZES.map((size) => {
-                    const active = selectedSize === size;
-                    return (
-                      <button
-                        key={size}
-                        type="button"
-                        onClick={() => setSelectedSize(size)}
-                        className={`flex-1 py-2 rounded-full text-sm font-semibold border transition-colors ${
-                          active
-                            ? 'bg-qraving-button border-qraving-button text-qraving-text'
-                            : 'bg-transparent border-gray-300 text-gray-700'
-                        }`}
-                      >
-                        {size}
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
+              {sizes.length > 0 && (
+                <section>
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                    Size
+                  </h3>
+                  <div className="flex gap-2">
+                    {sizes.map((size) => {
+                      const active = selectedSize === size.label;
+                      return (
+                        <button
+                          key={size.label}
+                          type="button"
+                          onClick={() => setSelectedSize(size.label)}
+                          className={`flex-1 py-2 rounded-full text-sm font-semibold border transition-colors ${
+                            active
+                              ? 'bg-qraving-button border-qraving-button text-qraving-text'
+                              : 'bg-transparent border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          {size.label} ({formatPriceDelta(size.priceDelta)})
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
 
               {/* Add-ons */}
-              <section>
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-                  Add-ons
-                </h3>
-                <ul className="flex flex-col divide-y divide-gray-100">
-                  {ADD_ONS.map((addOn) => {
-                    const checked = selectedAddOns.includes(addOn);
-                    return (
-                      <li key={addOn}>
-                        <label className="flex items-center justify-between py-3 cursor-pointer select-none">
-                          <span className="text-sm text-gray-800">{addOn}</span>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleAddOn(addOn)}
-                            className="w-4 h-4 rounded accent-qraving-green cursor-pointer"
-                          />
-                        </label>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
+              {addOns.length > 0 && (
+                <section>
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                    Add-ons
+                  </h3>
+                  <ul className="flex flex-col divide-y divide-gray-100">
+                    {addOns.map((addOn) => {
+                      const checked = selectedAddOns.includes(addOn.label);
+                      return (
+                        <li key={addOn.label}>
+                          <label className="flex items-center justify-between py-3 cursor-pointer select-none">
+                            <span className="text-sm text-gray-800">
+                              {addOn.label} ({formatPriceDelta(addOn.priceDelta)})
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleAddOn(addOn.label)}
+                              className="w-4 h-4 rounded accent-qraving-green cursor-pointer"
+                            />
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              )}
 
               {/* Special instructions */}
-              <section>
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-                  Special Instructions
-                </h3>
-                <textarea
-                  value={instructions}
-                  onChange={(e) => setInstructions(e.target.value)}
-                  placeholder="e.g. no onions, extra spicy…"
-                  rows={3}
-                  maxLength={300}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 resize-none focus:outline-none focus:border-red-400"
-                />
-              </section>
+              {showSpecialInstructions && (
+                <section>
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                    Special Instructions
+                  </h3>
+                  <textarea
+                    value={instructions}
+                    onChange={(e) => setInstructions(e.target.value)}
+                    placeholder="e.g. no onions, extra spicy…"
+                    rows={3}
+                    maxLength={300}
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 resize-none focus:outline-none focus:border-red-400"
+                  />
+                </section>
+              )}
 
               {/* Share this item — sharer selection happens later, at payment time */}
               <section>
