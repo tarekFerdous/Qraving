@@ -2,8 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { X, Trash2, Plus, ImageIcon, Loader2 } from 'lucide-react';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { storage } from '@/lib/firebase-client';
+import { upload } from '@vercel/blob/client';
 import { createItem, updateItem, MenuItem, Customizations } from '@/lib/manager-menu';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -131,7 +130,7 @@ export default function ItemForm({
   // ── Image upload ─────────────────────────────────────────────────────────────
 
   const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
@@ -139,27 +138,21 @@ export default function ItemForm({
       setUploadProgress(0);
 
       const itemId = item?.id ?? 'new';
-      const storagePath = `companies/${companyId}/branches/${branchId}/items/${itemId}/${file.name}`;
-      const storageRef = ref(storage, storagePath);
-      const uploadTask = uploadBytesResumable(storageRef, file);
+      const pathname = `companies/${companyId}/branches/${branchId}/items/${itemId}/${file.name}`;
 
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-          setUploadProgress(pct);
-        },
-        (error) => {
-          console.error('Upload error:', error);
-          setUploadError('Upload failed. Please try again.');
-          setUploadProgress(null);
-        },
-        async () => {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          setImageUrl(url);
-          setUploadProgress(null);
-        },
-      );
+      try {
+        const blob = await upload(pathname, file, {
+          access: 'public',
+          handleUploadUrl: `/api/admin/companies/${companyId}/items/upload`,
+          onUploadProgress: ({ percentage }) => setUploadProgress(Math.round(percentage)),
+        });
+        setImageUrl(blob.url);
+      } catch (error) {
+        console.error('Upload error:', error);
+        setUploadError('Upload failed. Please try again.');
+      } finally {
+        setUploadProgress(null);
+      }
     },
     [companyId, branchId, item?.id],
   );

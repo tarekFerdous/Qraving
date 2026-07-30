@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { del } from '@vercel/blob';
 import { requireRole } from '@/lib/auth-server';
 import { getCompany, setCompanyLogo, clearCompanyLogo } from '@/lib/company';
 
 type Params = { params: Promise<{ companyId: string }> };
+
+async function deletePreviousLogo(previousLogoUrl: string | null) {
+  if (!previousLogoUrl) return;
+  try {
+    await del(previousLogoUrl);
+  } catch {
+    // Old file may already be gone; nothing else to do here.
+  }
+}
 
 export async function POST(req: NextRequest, { params }: Params) {
   const auth = await requireRole('superadmin');
@@ -21,12 +31,14 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const previousLogoUrl = company.logoUrl ?? null;
     await setCompanyLogo(companyId, body.logoUrl);
+    await deletePreviousLogo(previousLogoUrl);
     return NextResponse.json({ logoUrl: body.logoUrl, previousLogoUrl }, { status: 200 });
   }
 
   if (body.action === 'remove') {
     const previousLogoUrl = company.logoUrl ?? null;
     await clearCompanyLogo(companyId);
+    await deletePreviousLogo(previousLogoUrl);
     return NextResponse.json({ previousLogoUrl }, { status: 200 });
   }
 

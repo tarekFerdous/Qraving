@@ -1,7 +1,7 @@
 import { adminDb } from '@/lib/firebase-admin';
 import { Timestamp, FieldValue } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
-import { getStorage } from 'firebase-admin/storage';
+import { list, del } from '@vercel/blob';
 import { randomBytes } from 'crypto';
 
 export interface LayerConfig {
@@ -162,11 +162,16 @@ export async function hardDeleteCompany(companyId: string): Promise<void> {
   );
 
   try {
-    const bucket = getStorage().bucket(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET);
-    await bucket.deleteFiles({ prefix: `companies/${companyId}/` });
+    const prefix = `companies/${companyId}/`;
+    let cursor: string | undefined;
+    do {
+      const { blobs, cursor: nextCursor, hasMore } = await list({ prefix, cursor });
+      await Promise.all(blobs.map((blob) => del(blob.url)));
+      cursor = hasMore ? nextCursor : undefined;
+    } while (cursor);
   } catch {
-    // Storage bucket may not be provisioned (e.g. project not yet upgraded to
-    // Blaze) — don't let a missing/inaccessible bucket block the rest of the purge.
+    // Blob store may not be provisioned/reachable — don't let that block the
+    // rest of the purge.
   }
 
   const companyRef = adminDb.doc(`companies/${companyId}`);

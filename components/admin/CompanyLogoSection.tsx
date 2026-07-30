@@ -2,8 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { ImageIcon, Loader2 } from 'lucide-react';
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
-import { storage } from '@/lib/firebase-client';
+import { upload } from '@vercel/blob/client';
 
 const MAX_LOGO_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
@@ -12,8 +11,8 @@ const MAX_LOGO_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
  *
  * Shared between the company detail page (#165) and the company creation
  * flow (#166) — both persist logos via POST /api/admin/companies/{id}/logo
- * and upload the file to Storage at companies/{id}/logo/{filename} using the
- * same client-side validation (PNG only, 5MB max).
+ * and upload the file to Vercel Blob at companies/{id}/logo/{filename} using
+ * the same client-side validation (PNG only, 5MB max).
  */
 export function CompanyLogoSection({
   companyId,
@@ -44,17 +43,9 @@ export function CompanyLogoSection({
 
     const data = await res.json() as { logoUrl: string; previousLogoUrl: string | null };
     onLogoChange(data.logoUrl);
-
-    if (data.previousLogoUrl) {
-      try {
-        await deleteObject(ref(storage, data.previousLogoUrl));
-      } catch {
-        // Old file may already be gone; nothing else to do here.
-      }
-    }
   }
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
@@ -72,27 +63,19 @@ export function CompanyLogoSection({
 
     setUploadProgress(0);
 
-    const storagePath = `companies/${companyId}/logo/${file.name}`;
-    const storageRef = ref(storage, storagePath);
-    const uploadTask = uploadBytesResumable(storageRef, file);
-
-    uploadTask.on(
-      'state_changed',
-      (snapshot) => {
-        const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-        setUploadProgress(pct);
-      },
-      (err) => {
-        console.error('Logo upload error:', err);
-        setError('Upload failed. Please try again.');
-        setUploadProgress(null);
-      },
-      async () => {
-        const url = await getDownloadURL(uploadTask.snapshot.ref);
-        await persistLogo(url);
-        setUploadProgress(null);
-      },
-    );
+    try {
+      const blob = await upload(`companies/${companyId}/logo/${file.name}`, file, {
+        access: 'public',
+        handleUploadUrl: `/api/admin/companies/${companyId}/logo/upload`,
+        onUploadProgress: ({ percentage }) => setUploadProgress(Math.round(percentage)),
+      });
+      await persistLogo(blob.url);
+    } catch (err) {
+      console.error('Logo upload error:', err);
+      setError('Upload failed. Please try again.');
+    } finally {
+      setUploadProgress(null);
+    }
   }
 
   async function handleRemove() {
@@ -113,16 +96,7 @@ export function CompanyLogoSection({
         return;
       }
 
-      const data = await res.json() as { previousLogoUrl: string | null };
       onLogoChange(undefined);
-
-      if (data.previousLogoUrl) {
-        try {
-          await deleteObject(ref(storage, data.previousLogoUrl));
-        } catch {
-          // Old file may already be gone; nothing else to do here.
-        }
-      }
     } finally {
       setRemoving(false);
     }

@@ -25,6 +25,7 @@
   "homepage": "https://github.com/tarekFerdous/Qraving#readme",
   "dependencies": {
     "@types/qrcode": "^1.5.6",
+    "@vercel/blob": "^2.6.1",
     "firebase": "^10.0.0",
     "firebase-admin": "^12.0.0",
     "lucide-react": "^1.21.0",

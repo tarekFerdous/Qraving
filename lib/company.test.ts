@@ -12,14 +12,15 @@ vi.mock('firebase-admin/auth', () => ({
   getAuth: vi.fn(),
 }));
 
-vi.mock('firebase-admin/storage', () => ({
-  getStorage: vi.fn(),
+vi.mock('@vercel/blob', () => ({
+  list: vi.fn(),
+  del: vi.fn(),
 }));
 
 import { isNodeInBranch, resolveBranchNode, hardDeleteCompany, lockCompany, restoreCompany, CompanyNode } from '@/lib/company';
 import { adminDb } from '@/lib/firebase-admin';
 import { getAuth } from 'firebase-admin/auth';
-import { getStorage } from 'firebase-admin/storage';
+import { list, del } from '@vercel/blob';
 
 type NodeFixture = Partial<CompanyNode> & { id: string };
 
@@ -123,7 +124,7 @@ describe('hardDeleteCompany', () => {
     vi.clearAllMocks();
   });
 
-  function setup(userIds: string[]) {
+  function setup(userIds: string[], blobs: { url: string }[] = []) {
     const userDocs = userIds.map((id) => ({ id, ref: { delete: vi.fn().mockResolvedValue(undefined) } }));
     const mockGet = vi.fn().mockResolvedValue({ docs: userDocs });
     const mockWhere = vi.fn().mockReturnValue({ get: mockGet });
@@ -136,11 +137,10 @@ describe('hardDeleteCompany', () => {
     const deleteUser = vi.fn().mockResolvedValue(undefined);
     vi.mocked(getAuth).mockReturnValue({ deleteUser } as any);
 
-    const deleteFiles = vi.fn().mockResolvedValue(undefined);
-    const bucket = vi.fn().mockReturnValue({ deleteFiles });
-    vi.mocked(getStorage).mockReturnValue({ bucket } as any);
+    vi.mocked(list).mockResolvedValue({ blobs, hasMore: false, cursor: undefined } as any);
+    vi.mocked(del).mockResolvedValue(undefined as any);
 
-    return { userDocs, mockWhere, deleteUser, deleteFiles, bucket, companyRef };
+    return { userDocs, mockWhere, deleteUser, companyRef };
   }
 
   it('deletes each manager Auth account and users doc for the company', async () => {
@@ -155,13 +155,28 @@ describe('hardDeleteCompany', () => {
     userDocs.forEach((d) => expect(d.ref.delete).toHaveBeenCalled());
   });
 
-  it('sweeps every Storage object under companies/{companyId}/', async () => {
-    const { bucket, deleteFiles } = setup([]);
+  it('sweeps every Blob object under companies/{companyId}/', async () => {
+    setup([], [{ url: 'https://blob.example.com/companies/company-1/logo/a.png' }, { url: 'https://blob.example.com/companies/company-1/branches/b/items/i/c.png' }]);
 
     await hardDeleteCompany('company-1');
 
-    expect(bucket).toHaveBeenCalled();
-    expect(deleteFiles).toHaveBeenCalledWith({ prefix: 'companies/company-1/' });
+    expect(list).toHaveBeenCalledWith({ prefix: 'companies/company-1/', cursor: undefined });
+    expect(del).toHaveBeenCalledWith('https://blob.example.com/companies/company-1/logo/a.png');
+    expect(del).toHaveBeenCalledWith('https://blob.example.com/companies/company-1/branches/b/items/i/c.png');
+  });
+
+  it('pages through list() results until hasMore is false', async () => {
+    setup([]);
+    vi.mocked(list)
+      .mockResolvedValueOnce({ blobs: [{ url: 'https://blob.example.com/a' }], hasMore: true, cursor: 'cursor-2' } as any)
+      .mockResolvedValueOnce({ blobs: [{ url: 'https://blob.example.com/b' }], hasMore: false, cursor: undefined } as any);
+
+    await hardDeleteCompany('company-1');
+
+    expect(list).toHaveBeenNthCalledWith(1, { prefix: 'companies/company-1/', cursor: undefined });
+    expect(list).toHaveBeenNthCalledWith(2, { prefix: 'companies/company-1/', cursor: 'cursor-2' });
+    expect(del).toHaveBeenCalledWith('https://blob.example.com/a');
+    expect(del).toHaveBeenCalledWith('https://blob.example.com/b');
   });
 
   it('recursively deletes the company document and its Firestore subcollections', async () => {
@@ -181,9 +196,9 @@ describe('hardDeleteCompany', () => {
     expect(userDocs[0].ref.delete).toHaveBeenCalled();
   });
 
-  it('still purges Firestore and Auth data if the Storage bucket is missing/inaccessible', async () => {
-    const { deleteFiles, companyRef } = setup([]);
-    deleteFiles.mockRejectedValueOnce(new Error('The specified bucket does not exist.'));
+  it('still purges Firestore and Auth data if the Blob store is missing/inaccessible', async () => {
+    const { companyRef } = setup([]);
+    vi.mocked(list).mockRejectedValueOnce(new Error('Store not found.'));
 
     await expect(hardDeleteCompany('company-1')).resolves.not.toThrow();
     expect(adminDb.recursiveDelete).toHaveBeenCalledWith(companyRef);
