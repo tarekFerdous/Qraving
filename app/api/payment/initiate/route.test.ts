@@ -365,6 +365,27 @@ describe('POST /api/payment/initiate', () => {
     expect(helcimBody.amount).toBe(1000)
   })
 
+  it('test-mode (no HELCIM_API_KEY) sentinel redirectUrl uses status=approved so interac-callback marks the basket paid', async () => {
+    delete process.env.HELCIM_API_KEY
+
+    seedSession('sess-initiate-test-mode', makeSession({
+      id: 'sess-initiate-test-mode',
+      baskets: [makeBasket({ userId: 'user-1' })],
+    }))
+
+    const req = makeRequest({ sessionId: 'sess-initiate-test-mode', basketId: 'user-1', paymentMode: 'interac' })
+    const res = await POST(req)
+    const body = (await res.json()) as { redirectUrl: string }
+
+    expect(res.status).toBe(200)
+    const params = new URL(body.redirectUrl, 'http://localhost').searchParams
+    // interac-callback/route.ts reads exactly these two params to decide
+    // approval — a mismatched name or casing (e.g. the old `result=APPROVED`)
+    // silently falls through to the declined branch.
+    expect(params.get('status')).toBe('approved')
+    expect(params.get('transactionId')).toBeTruthy()
+  })
+
   it('returns 502 when the Helcim API returns a non-2xx response', async () => {
     vi.stubGlobal(
       'fetch',

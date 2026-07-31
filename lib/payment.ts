@@ -140,7 +140,7 @@ export function isSharedDevicePayment(session: Session): boolean {
  *
  * Needed because /api/payment/initiate's test-mode sentinel redirectUrl
  * (used whenever HELCIM_API_KEY isn't configured) is a relative path like
- * '/api/payment/interac-callback?sessionId=...&basketId=...&result=APPROVED'
+ * '/api/payment/interac-callback?sessionId=...&basketId=...&status=approved&transactionId=__test__'
  * — fine for an on-device `window.location.href` redirect, but useless
  * encoded into a QR code or link opened fresh on a different device, which
  * has no origin to resolve a relative path against. A real Helcim redirect

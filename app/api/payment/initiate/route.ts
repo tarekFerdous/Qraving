@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
   if (!process.env.HELCIM_API_KEY) {
     // No credentials configured — use a sentinel so the client can simulate success
     helcimToken = '__test__'
-    helcimRedirectUrl = `/api/payment/interac-callback?sessionId=${sessionId}&basketId=${basketId}&result=APPROVED`
+    helcimRedirectUrl = `/api/payment/interac-callback?sessionId=${sessionId}&basketId=${basketId}&status=approved&transactionId=__test__`
   } else {
     const helcimRes = await fetch(`${HELCIM_BASE_URL}/helcim-pay/initialize`, {
       method: 'POST',
