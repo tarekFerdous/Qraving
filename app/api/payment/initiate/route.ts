@@ -18,7 +18,9 @@ const HELCIM_BASE_URL = isTestMode
   : 'https://api.helcim.com/v2' // production: same URL, live API key
 
 export async function POST(req: NextRequest) {
-  const { sessionId, basketId, paymentMode, paymentPlan } = (await req.json()) as {
+  const { companyId, branchId, sessionId, basketId, paymentMode, paymentPlan } = (await req.json()) as {
+    companyId: string
+    branchId: string
     sessionId: string
     basketId: string
     paymentMode: 'wallet' | 'card' | 'interac'
@@ -30,7 +32,7 @@ export async function POST(req: NextRequest) {
     paymentPlan?: 'single' | 'split' | null
   }
 
-  let session = await getSession(sessionId)
+  let session = await getSession(companyId, branchId, sessionId)
 
   // 410 Gone when the split-payment deadline has passed
   if (isPaymentDeadlineExpired(session)) {
@@ -58,7 +60,7 @@ export async function POST(req: NextRequest) {
   // reflects this basket's share of any items it's splitting with other
   // baskets — this is the security-relevant amount, since this route (not
   // the client) determines what's really charged.
-  const menuSections = await getMenu('demo-company', 'demo-branch')
+  const menuSections = await getMenu(companyId, branchId)
   const menuItems = menuSections.flatMap((s) => s.items)
   const totalCents = Math.round(
     (effectivePlan === 'single'
@@ -82,7 +84,7 @@ export async function POST(req: NextRequest) {
   if (!process.env.HELCIM_API_KEY) {
     // No credentials configured — use a sentinel so the client can simulate success
     helcimToken = '__test__'
-    helcimRedirectUrl = `/api/payment/interac-callback?sessionId=${sessionId}&basketId=${basketId}&status=approved&transactionId=__test__`
+    helcimRedirectUrl = `/api/payment/interac-callback?companyId=${companyId}&branchId=${branchId}&sessionId=${sessionId}&basketId=${basketId}&status=approved&transactionId=__test__`
   } else {
     const helcimRes = await fetch(`${HELCIM_BASE_URL}/helcim-pay/initialize`, {
       method: 'POST',
@@ -120,7 +122,7 @@ export async function POST(req: NextRequest) {
     updatedSession = { ...updatedSession, paymentDeadline: deadline }
   }
 
-  await setSession(sessionId, updatedSession)
+  await setSession(companyId, branchId, sessionId, updatedSession)
 
   if (paymentMode === 'interac') {
     return NextResponse.json({ redirectUrl: helcimRedirectUrl })

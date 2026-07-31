@@ -12,10 +12,10 @@ import { createSession } from '@/lib/session'
 const mockSessions = new Map<string, Session>()
 
 vi.mock('@/lib/session-firestore', () => ({
-  getSession: vi.fn().mockImplementation(async (id: string) =>
+  getSession: vi.fn().mockImplementation(async (_companyId: string, _branchId: string, id: string) =>
     mockSessions.get(id) ?? createSession(id),
   ),
-  setSession: vi.fn().mockImplementation(async (id: string, session: Session) => {
+  setSession: vi.fn().mockImplementation(async (_companyId: string, _branchId: string, id: string, session: Session) => {
     mockSessions.set(id, session)
   }),
 }))

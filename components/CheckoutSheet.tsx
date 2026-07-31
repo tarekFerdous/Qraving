@@ -21,8 +21,8 @@ export interface CheckoutSheetProps {
   basket: UserBasket;
   menuItems: MenuItem[];
   onClose: () => void;
-  companyId?: string;
-  branchId?: string;
+  companyId: string;
+  branchId: string;
 }
 
 type View = 'checkout' | 'confirm-identity' | 'confirmed';
@@ -251,6 +251,8 @@ export default function CheckoutSheet({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          companyId,
+          branchId,
           sessionId: session.id,
           basketId: basket.userId,
           paymentMode,
@@ -354,6 +356,8 @@ export default function CheckoutSheet({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          companyId,
+          branchId,
           sessionId: session.id,
           basketId: basket.userId,
           paymentMode: 'interac',

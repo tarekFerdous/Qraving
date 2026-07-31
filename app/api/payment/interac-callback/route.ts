@@ -4,13 +4,13 @@ import { allBasketsPaid, applyWholeTablePayment, computeBasketTotal } from '@/li
 import { getMenu } from '@/lib/menu'
 import type { UserBasket } from '@/lib/session'
 
-function fireSmsReceipt(basket: UserBasket, sessionId: string): void {
+function fireSmsReceipt(basket: UserBasket, sessionId: string, companyId: string, branchId: string): void {
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
   void (async () => {
     try {
-      const menuSections = await getMenu('demo-company', 'demo-branch')
+      const menuSections = await getMenu(companyId, branchId)
       const menuItems = menuSections.flatMap((s) => s.items)
       const total = computeBasketTotal(basket, menuItems)
       await fetch(`${baseUrl}/api/receipts/sms`, {
@@ -34,10 +34,12 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const transactionId = searchParams.get('transactionId') ?? ''
   const status = searchParams.get('status') ?? ''
+  const companyId = searchParams.get('companyId') ?? ''
+  const branchId = searchParams.get('branchId') ?? ''
   const sessionId = searchParams.get('sessionId') ?? ''
   const basketId = searchParams.get('basketId') ?? ''
 
-  const session = await getSession(sessionId)
+  const session = await getSession(companyId, branchId, sessionId)
 
   const basketIndex = session.baskets.findIndex((b) => b.userId === basketId)
 
@@ -61,7 +63,7 @@ export async function GET(req: NextRequest) {
     // Whole-table payment: this one transaction covers every non-empty
     // basket, so every basket gets marked paid with the same transaction id.
     updatedSession = applyWholeTablePayment(session, transactionId, 'interac')
-    fireSmsReceipt(updatedSession.baskets[basketIndex], sessionId)
+    fireSmsReceipt(updatedSession.baskets[basketIndex], sessionId, companyId, branchId)
   } else if (status === 'approved') {
     const updatedBaskets = [...session.baskets]
     updatedBaskets[basketIndex] = {
@@ -71,7 +73,7 @@ export async function GET(req: NextRequest) {
       paymentMethod: 'interac',
     }
     updatedSession = { ...session, baskets: updatedBaskets }
-    fireSmsReceipt(updatedSession.baskets[basketIndex], sessionId)
+    fireSmsReceipt(updatedSession.baskets[basketIndex], sessionId, companyId, branchId)
   } else {
     // declined — only the initiating basket failed; other baskets are
     // untouched and can still be paid independently
@@ -88,7 +90,7 @@ export async function GET(req: NextRequest) {
     updatedSession = { ...updatedSession, orderStatus: 'submitted' }
   }
 
-  await setSession(sessionId, updatedSession)
+  await setSession(companyId, branchId, sessionId, updatedSession)
 
   return NextResponse.redirect(
     new URL(`/${sessionId}?payment=${status === 'approved' ? 'success' : 'failed'}`, req.url),

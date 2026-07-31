@@ -5,13 +5,13 @@ import { allBasketsPaid, applyWholeTablePayment, computeBasketTotal } from '@/li
 import { getMenu } from '@/lib/menu'
 import type { UserBasket } from '@/lib/session'
 
-function fireSmsReceipt(basket: UserBasket, sessionId: string): void {
+function fireSmsReceipt(basket: UserBasket, sessionId: string, companyId: string, branchId: string): void {
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
   void (async () => {
     try {
-      const menuSections = await getMenu('demo-company', 'demo-branch')
+      const menuSections = await getMenu(companyId, branchId)
       const menuItems = menuSections.flatMap((s) => s.items)
       const total = computeBasketTotal(basket, menuItems)
       await fetch(`${baseUrl}/api/receipts/sms`, {
@@ -32,6 +32,8 @@ function fireSmsReceipt(basket: UserBasket, sessionId: string): void {
 }
 
 type WebhookPayload = {
+  companyId: string
+  branchId: string
   sessionId: string
   basketId: string
   transactionId: string
@@ -54,9 +56,9 @@ export async function POST(req: NextRequest) {
   }
 
   const payload = JSON.parse(rawBody) as WebhookPayload
-  const { sessionId, basketId, transactionId, status, paymentMethod } = payload
+  const { companyId, branchId, sessionId, basketId, transactionId, status, paymentMethod } = payload
 
-  const session = await getSession(sessionId)
+  const session = await getSession(companyId, branchId, sessionId)
 
   const basketIndex = session.baskets.findIndex((b) => b.userId === basketId)
   if (basketIndex === -1) {
@@ -70,7 +72,7 @@ export async function POST(req: NextRequest) {
     // Whole-table payment: this one transaction covers every non-empty
     // basket, so every basket gets marked paid with the same transaction id.
     updatedSession = applyWholeTablePayment(session, transactionId, paymentMethod)
-    fireSmsReceipt(updatedSession.baskets[basketIndex], sessionId)
+    fireSmsReceipt(updatedSession.baskets[basketIndex], sessionId, companyId, branchId)
   } else if (status === 'approved') {
     const updatedBaskets = [...session.baskets]
     updatedBaskets[basketIndex] = {
@@ -80,7 +82,7 @@ export async function POST(req: NextRequest) {
       paymentMethod,
     }
     updatedSession = { ...session, baskets: updatedBaskets }
-    fireSmsReceipt(updatedSession.baskets[basketIndex], sessionId)
+    fireSmsReceipt(updatedSession.baskets[basketIndex], sessionId, companyId, branchId)
   } else {
     // declined — only the initiating basket failed; other baskets are
     // untouched and can still be paid independently
@@ -97,7 +99,7 @@ export async function POST(req: NextRequest) {
     updatedSession = { ...updatedSession, orderStatus: 'submitted' }
   }
 
-  await setSession(sessionId, updatedSession)
+  await setSession(companyId, branchId, sessionId, updatedSession)
 
   // Always 200 — Helcim will retry on non-2xx; we must not cause retries for
   // expected business events like declines.

@@ -2,21 +2,22 @@ import { adminDb } from '@/lib/firebase-admin';
 import { Timestamp } from 'firebase-admin/firestore';
 import { Session, UserBasket, createSession } from '@/lib/session';
 
-const COMPANY_ID = 'demo-company';
-const BRANCH_ID = 'demo-branch';
-
-function sessionDocPath(sessionId: string): string {
-  return `companies/${COMPANY_ID}/branches/${BRANCH_ID}/sessions/${sessionId}`;
+function sessionDocPath(companyId: string, branchId: string, sessionId: string): string {
+  return `companies/${companyId}/branches/${branchId}/sessions/${sessionId}`;
 }
 
-function basketsColPath(sessionId: string): string {
-  return `${sessionDocPath(sessionId)}/baskets`;
+function basketsColPath(companyId: string, branchId: string, sessionId: string): string {
+  return `${sessionDocPath(companyId, branchId, sessionId)}/baskets`;
 }
 
-export async function getSession(sessionId: string): Promise<Session> {
+export async function getSession(
+  companyId: string,
+  branchId: string,
+  sessionId: string,
+): Promise<Session> {
   const [sessionSnap, basketsSnap] = await Promise.all([
-    adminDb.doc(sessionDocPath(sessionId)).get(),
-    adminDb.collection(basketsColPath(sessionId)).get(),
+    adminDb.doc(sessionDocPath(companyId, branchId, sessionId)).get(),
+    adminDb.collection(basketsColPath(companyId, branchId, sessionId)).get(),
   ]);
 
   if (!sessionSnap.exists) return createSession(sessionId);
@@ -40,11 +41,16 @@ export async function getSession(sessionId: string): Promise<Session> {
   };
 }
 
-export async function setSession(sessionId: string, session: Session): Promise<void> {
+export async function setSession(
+  companyId: string,
+  branchId: string,
+  sessionId: string,
+  session: Session,
+): Promise<void> {
   const batch = adminDb.batch();
 
   batch.set(
-    adminDb.doc(sessionDocPath(sessionId)),
+    adminDb.doc(sessionDocPath(companyId, branchId, sessionId)),
     {
       orderStatus: session.orderStatus,
       paymentDeadline: session.paymentDeadline
@@ -58,7 +64,7 @@ export async function setSession(sessionId: string, session: Session): Promise<v
 
   for (const basket of session.baskets) {
     const { userId, ...data } = basket;
-    batch.set(adminDb.doc(`${basketsColPath(sessionId)}/${userId}`), data);
+    batch.set(adminDb.doc(`${basketsColPath(companyId, branchId, sessionId)}/${userId}`), data);
   }
 
   await batch.commit();
