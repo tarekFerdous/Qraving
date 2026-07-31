@@ -167,6 +167,27 @@ describe('POST /api/payment/webhook', () => {
     expect(res.status).toBe(200)
   })
 
+  it('raises a staff-visible alert and still returns 200 when the basket is missing (session reset/freed mid-payment)', async () => {
+    seedSession('sess-webhook-missing-basket', makeSession({ id: 'sess-webhook-missing-basket', baskets: [makeBasket({ userId: 'user-1' })] }))
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const res = await POST(makeRequest({
+      sessionId: 'sess-webhook-missing-basket',
+      basketId: 'user-vanished',
+      transactionId: 'txn-vanished-1',
+      status: 'approved',
+      paymentMethod: 'card',
+    }))
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ received: true })
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/\[webhook\] ALERT:.*sessionId=sess-webhook-missing-basket.*basketId=user-vanished.*transactionId=txn-vanished-1/),
+    )
+
+    errorSpy.mockRestore()
+  })
+
   // -------------------------------------------------------------------------
   // Whole-table payment (paymentPlan === 'single')
   // -------------------------------------------------------------------------

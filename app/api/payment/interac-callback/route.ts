@@ -43,8 +43,14 @@ export async function GET(req: NextRequest) {
 
   const basketIndex = session.baskets.findIndex((b) => b.userId === basketId)
 
-  // Unknown basket — still redirect gracefully
+  // Unknown basket — likely the table's session was reset/freed while a
+  // payment was in flight. Money is resolving against a vanished order —
+  // this needs staff attention, not a silent no-op. Still redirect
+  // gracefully so the customer isn't stuck.
   if (basketIndex === -1) {
+    console.error(
+      `[interac-callback] ALERT: payment resolved for missing basket — sessionId=${sessionId} basketId=${basketId} transactionId=${transactionId} status=${status} companyId=${companyId} branchId=${branchId}`,
+    )
     return NextResponse.redirect(
       new URL(`/${sessionId}?payment=${status === 'approved' ? 'success' : 'failed'}`, req.url),
     )

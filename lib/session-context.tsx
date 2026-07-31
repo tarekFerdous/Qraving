@@ -1,9 +1,10 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
-import { doc, collection, onSnapshot, setDoc, deleteDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, collection, onSnapshot, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase-client';
-import { Session, UserBasket, createSession, partitionBasketsForReset } from '@/lib/session';
+import { Session, UserBasket, createSession } from '@/lib/session';
+import { resetSessionInFirestore } from '@/lib/session-reset';
 
 interface SessionContextValue {
   session: Session;
@@ -32,7 +33,6 @@ export function SessionProvider({
 }) {
   const sessionDoc = `companies/${company}/branches/${branch}/sessions/${table}`;
   const basketsCol = `${sessionDoc}/baskets`;
-  const archivedBasketsCol = `${sessionDoc}/archivedBaskets`;
 
   const [session, setSession] = useState<Session>(() => createSession(table));
   const [isExpired, setIsExpired] = useState(false);
@@ -112,39 +112,11 @@ export function SessionProvider({
     setSession(fresh);
     prevItemCountRef.current = -1;
 
-    const sessionRef = doc(db, sessionDoc);
-    setDoc(
-      sessionRef,
-      {
-        userCounter: 0,
-        orderStatus: 'building',
-        paymentDeadline: null,
-        paymentPlan: null,
-        lastActivity: serverTimestamp(),
-        expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 60 * 1000)),
-      },
-      { merge: true },
-    ).catch(() => {});
-
-    // Clean up the live baskets subcollection by paymentStatus: drafts are
-    // discarded, paid baskets are archived (preserved but hidden from the
-    // fresh session), and failed-payment baskets are left untouched so the
-    // app keeps prompting that diner to pay.
-    const { toDelete, toArchive } = partitionBasketsForReset(session.baskets);
-
-    for (const userId of toDelete) {
-      deleteDoc(doc(db, basketsCol, userId)).catch(() => {});
-    }
-
-    for (const userId of toArchive) {
-      const basket = session.baskets.find((b) => b.userId === userId);
-      if (!basket) continue;
-      const { userId: _userId, ...data } = basket;
-      setDoc(doc(db, archivedBasketsCol, userId), data)
-        .then(() => deleteDoc(doc(db, basketsCol, userId)))
-        .catch(() => {});
-    }
-  }, [table, sessionDoc, basketsCol, archivedBasketsCol, session.baskets]);
+    // Fire-and-forget: the shared Firestore reset swallows its own write
+    // failures (see lib/session-reset.ts), and this callback has always been
+    // synchronous from the caller's perspective (e.g. onClick={resetSession}).
+    resetSessionInFirestore(company, branch, table, session.baskets).catch(() => {});
+  }, [company, branch, table, session.baskets]);
 
   const updateSession = useCallback((s: Session) => {
     // Suppress the external-removal toast for 1.5 s after any local write so

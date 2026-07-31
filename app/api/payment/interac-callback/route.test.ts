@@ -211,4 +211,24 @@ describe('GET /api/payment/interac-callback', () => {
     expect(updated.baskets.find((b) => b.userId === 'user-2')!.paymentStatus).toBe('pending')
     expect(updated.orderStatus).not.toBe('submitted')
   })
+
+  it('raises a staff-visible alert and still redirects gracefully when the basket is missing (session reset/freed mid-payment)', async () => {
+    seedSession('sess-ic-missing-basket', makeSession({ id: 'sess-ic-missing-basket', baskets: [makeBasket({ userId: 'user-1' })] }))
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const res = await GET(makeRequest({
+      sessionId: 'sess-ic-missing-basket',
+      basketId: 'user-vanished',
+      transactionId: 'txn-ic-vanished-1',
+      status: 'approved',
+    }))
+
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toContain('/sess-ic-missing-basket?payment=success')
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/\[interac-callback\] ALERT:.*sessionId=sess-ic-missing-basket.*basketId=user-vanished.*transactionId=txn-ic-vanished-1/),
+    )
+
+    errorSpy.mockRestore()
+  })
 })

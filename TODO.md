@@ -9,3 +9,5 @@ Deferred items not in V1 scope:
 3. **Admin dashboard payment status view** — A per-order payment status column/panel is blocked on the admin dashboard build. Wire up once the dashboard exists.
 
 4. **Automatic session expiry sweep for unpaid baskets** — Sessions with unpaid baskets that have passed the 30-minute inactivity deadline need a background sweep to expire/clean them up. Not implemented in V1.
+
+5. **Real payment cancellation on "Free the table"** — The admin dashboard's "Free the table" action resets the session/baskets in Firestore, but does not cancel an in-progress payment with the payment provider (Helcim) if the table is freed mid-payment. Not implemented in V1.

@@ -62,7 +62,13 @@ export async function POST(req: NextRequest) {
 
   const basketIndex = session.baskets.findIndex((b) => b.userId === basketId)
   if (basketIndex === -1) {
-    // Basket not found — still return 200 to acknowledge receipt
+    // Basket not found — likely the table's session was reset/freed while a
+    // payment was in flight. Money is resolving against a vanished order —
+    // this needs staff attention, not a silent no-op. Still return 200 to
+    // acknowledge receipt to Helcim.
+    console.error(
+      `[webhook] ALERT: payment resolved for missing basket — sessionId=${sessionId} basketId=${basketId} transactionId=${transactionId} status=${status} companyId=${companyId} branchId=${branchId}`,
+    )
     return NextResponse.json({ received: true })
   }
 

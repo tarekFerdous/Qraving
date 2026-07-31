@@ -10,6 +10,7 @@ const {
   mockUpdateDoc,
   mockDoc,
   mockGetDocs,
+  mockResetSessionInFirestore,
 } = vi.hoisted(() => ({
   mockCollection: vi.fn((...args: unknown[]) => ({ __type: 'collection', args })),
   mockQuery: vi.fn((...args: unknown[]) => ({ __type: 'query', args })),
@@ -18,6 +19,7 @@ const {
   mockUpdateDoc: vi.fn().mockResolvedValue(undefined),
   mockDoc: vi.fn((...args: unknown[]) => ({ __type: 'doc', args })),
   mockGetDocs: vi.fn().mockResolvedValue({ size: 0 }),
+  mockResetSessionInFirestore: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('firebase/firestore', () => ({
@@ -33,6 +35,10 @@ vi.mock('firebase/firestore', () => ({
 
 vi.mock('@/lib/firebase-client', () => ({
   db: {},
+}));
+
+vi.mock('@/lib/session-reset', () => ({
+  resetSessionInFirestore: mockResetSessionInFirestore,
 }));
 
 import DashboardTab from './DashboardTab';
@@ -66,7 +72,15 @@ function snap(docs: Array<{ id: string; data: () => unknown }>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockGetDocs.mockResolvedValue({ size: 0 });
+  // Distinguish the two getDocs call sites by the shape of the arg mockCollection
+  // / mockQuery produce: the active-QR-count widget calls getDocs(query(...)),
+  // while the Free-the-table basket fetch calls getDocs(collection(...)) directly.
+  mockGetDocs.mockImplementation((arg: { __type?: string }) => {
+    if (arg?.__type === 'collection') {
+      return Promise.resolve({ docs: [] });
+    }
+    return Promise.resolve({ size: 0 });
+  });
   // onSnapshot returns an unsubscribe fn; default no-op implementation, callback
   // captured per-call by tests as needed.
   mockOnSnapshot.mockImplementation(() => vi.fn());
@@ -132,7 +146,18 @@ describe('DashboardTab', () => {
     });
   });
 
-  it('shows a Free table action for a session that has not reached submitted, and calls updateDoc with orderStatus: submitted on click', async () => {
+  it('shows a Free the table action for a session that has not reached submitted, and on confirm calls resetSessionInFirestore with the fetched baskets instead of updateDoc', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const basketDocs = [
+      { id: 'user-1', data: () => ({ name: 'User 1', phone: '+15550001111', items: [], paymentStatus: 'pending', paymentMethod: null, helcimTransactionId: null }) },
+    ];
+    mockGetDocs.mockImplementation((arg: { __type?: string }) => {
+      if (arg?.__type === 'collection') {
+        return Promise.resolve({ docs: basketDocs });
+      }
+      return Promise.resolve({ size: 0 });
+    });
+
     let sessionsCallback: ((snap: unknown) => void) | undefined;
     mockOnSnapshot.mockImplementation((q, cb) => {
       if (q.args[0].args[1] === 'companies/company-1/branches/branch-1/sessions') {
@@ -153,20 +178,84 @@ describe('DashboardTab', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Free table')).toBeTruthy();
+      expect(screen.getByText('Free the table')).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByText('Free table'));
+    fireEvent.click(screen.getByText('Free the table'));
+
+    expect(confirmSpy).toHaveBeenCalled();
 
     await waitFor(() => {
-      expect(mockUpdateDoc).toHaveBeenCalledWith(
-        { __type: 'doc', args: [{}, 'companies/company-1/branches/branch-1/sessions/sess-1'] },
-        { orderStatus: 'submitted' },
+      expect(mockResetSessionInFirestore).toHaveBeenCalledWith(
+        'company-1',
+        'branch-1',
+        'sess-1',
+        [
+          {
+            userId: 'user-1',
+            name: 'User 1',
+            phone: '+15550001111',
+            items: [],
+            paymentStatus: 'pending',
+            paymentMethod: null,
+            helcimTransactionId: null,
+          },
+        ],
       );
     });
+
+    // Regression guard: the old direct-write approach must be gone.
+    expect(mockUpdateDoc).not.toHaveBeenCalledWith(expect.anything(), { orderStatus: 'submitted' });
+
+    confirmSpy.mockRestore();
   });
 
-  it('shows Free table for a fully_paid session (still short of submitted)', async () => {
+  it('shows the confirm dialog with copy about clearing baskets and in-progress payment, and does nothing if the manager cancels', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    let sessionsCallback: ((snap: unknown) => void) | undefined;
+    mockOnSnapshot.mockImplementation((q, cb) => {
+      if (q.args[0].args[1] === 'companies/company-1/branches/branch-1/sessions') {
+        sessionsCallback = cb;
+      }
+      return vi.fn();
+    });
+
+    render(<DashboardTab {...baseProps} />);
+
+    sessionsCallback!(
+      snap([
+        {
+          id: 'sess-1',
+          data: () => ({ orderStatus: 'building', userCounter: 2 }),
+        },
+      ]),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Free the table')).toBeTruthy();
+    });
+
+    const getDocsCallsBefore = mockGetDocs.mock.calls.length;
+
+    fireEvent.click(screen.getByText('Free the table'));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    const confirmMessage = confirmSpy.mock.calls[0][0] as string;
+    expect(confirmMessage.toLowerCase()).toContain('basket');
+    expect(confirmMessage.toLowerCase()).toContain('payment');
+
+    // No basket fetch, no reset call, no stuck "Freeing…" state on cancel.
+    expect(mockGetDocs).toHaveBeenCalledTimes(getDocsCallsBefore);
+    expect(mockResetSessionInFirestore).not.toHaveBeenCalled();
+    expect(mockUpdateDoc).not.toHaveBeenCalled();
+    expect(screen.getByText('Free the table')).toBeTruthy();
+    expect(screen.queryByText('Freeing…')).toBeNull();
+
+    confirmSpy.mockRestore();
+  });
+
+  it('shows Free the table for a fully_paid session (still short of submitted)', async () => {
     let sessionsCallback: ((snap: unknown) => void) | undefined;
     mockOnSnapshot.mockImplementation((q, cb) => {
       if (q.args[0].args[1] === 'companies/company-1/branches/branch-1/sessions') {
@@ -189,10 +278,10 @@ describe('DashboardTab', () => {
     await waitFor(() => {
       expect(screen.getByText('sess-2')).toBeTruthy();
     });
-    expect(screen.getByText('Free table')).toBeTruthy();
+    expect(screen.getByText('Free the table')).toBeTruthy();
   });
 
-  it('does not render Free table for a session that has already reached submitted', async () => {
+  it('does not render Free the table for a session that has already reached submitted', async () => {
     let sessionsCallback: ((snap: unknown) => void) | undefined;
     mockOnSnapshot.mockImplementation((q, cb) => {
       if (q.args[0].args[1] === 'companies/company-1/branches/branch-1/sessions') {
@@ -217,7 +306,7 @@ describe('DashboardTab', () => {
     await waitFor(() => {
       expect(screen.getByText('sess-3')).toBeTruthy();
     });
-    expect(screen.queryByText('Free table')).toBeNull();
+    expect(screen.queryByText('Free the table')).toBeNull();
   });
 
   it('renders incoming orders and calls updateDoc with accepted status on Accept', async () => {

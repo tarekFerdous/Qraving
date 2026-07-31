@@ -12,7 +12,8 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase-client';
-import { isSessionClosed, type Session } from '@/lib/session';
+import { isSessionClosed, type Session, type UserBasket } from '@/lib/session';
+import { resetSessionInFirestore } from '@/lib/session-reset';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -154,17 +155,30 @@ export default function DashboardTab({ companyId, branchId, companyName, branchN
 
   // Manual staff override (#163): force-close a session that was abandoned before
   // payment completed, so the table can be reused without waiting on the 30-minute
-  // inactivity expiry. Reuses the exact same "closed" contract #159 established —
-  // orderStatus: 'submitted' — which the customer client already treats as terminal
-  // (isSessionClosed in lib/session.ts). Does not touch the inactivity expiry sweep.
+  // inactivity expiry. As of #200 this performs a genuine session reset (via the
+  // shared #198 resetSessionInFirestore helper) instead of writing
+  // orderStatus: 'submitted' directly — the old approach made the public menu page
+  // show "Your basket will be ready soon" for a table that never actually paid, and
+  // never touched baskets/counters/payment plan at all. The confirm() gate runs
+  // before setFreeingSessionId is set, so cancelling leaves no stuck spinner and
+  // performs no Firestore reads/writes.
   async function freeTable(sessionId: string) {
     if (!companyId || !branchId) return;
+    const confirmed = window.confirm(
+      'Free this table? This clears all baskets and cancels any in-progress payment for the table. This cannot be undone.',
+    );
+    if (!confirmed) return;
+
     setFreeingSessionId(sessionId);
     try {
-      await updateDoc(
-        doc(db, `companies/${companyId}/branches/${branchId}/sessions/${sessionId}`),
-        { orderStatus: 'submitted' },
+      const basketsSnap = await getDocs(
+        collection(db, `companies/${companyId}/branches/${branchId}/sessions/${sessionId}/baskets`),
       );
+      const baskets: UserBasket[] = basketsSnap.docs.map((d) => ({
+        userId: d.id,
+        ...(d.data() as Omit<UserBasket, 'userId'>),
+      }));
+      await resetSessionInFirestore(companyId, branchId, sessionId, baskets);
     } finally {
       setFreeingSessionId(null);
     }
@@ -245,7 +259,7 @@ export default function DashboardTab({ companyId, branchId, companyName, branchN
                         disabled={freeingSessionId === session.id}
                         className="rounded-lg border border-gray-300 text-gray-700 px-3 py-1.5 text-sm font-medium hover:bg-gray-100 transition-colors disabled:opacity-50"
                       >
-                        {freeingSessionId === session.id ? 'Freeing…' : 'Free table'}
+                        {freeingSessionId === session.id ? 'Freeing…' : 'Free the table'}
                       </button>
                     )}
                   </div>
