@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        # lib/firebase-admin.ts needs a service account at import time, and
+        # `next build` imports every route. A throwaway key is enough: no page
+        # touches Firestore during the build.
+        run: |
+          FIREBASE_SERVICE_ACCOUNT_JSON="$(node scripts/ci-fake-service-account.mjs)"
+          export FIREBASE_SERVICE_ACCOUNT_JSON
+          npm run build
+        env:
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: qraving-ci
+          NEXT_PUBLIC_FIREBASE_API_KEY: ci
+
+  firestore:
+    name: Firestore rules + emulator tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The Firestore emulator runs on the JVM.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+
+      - name: Emulator tests
+        run: npm run test:emulator

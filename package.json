@@ -1,18 +1,21 @@
 {
   "name": "qraving",
   "version": "1.0.0",
-  "description": "A qr code based cart managing app.",
+  "description": "QR-code shared-cart ordering web app for restaurants and other businesses.",
   "main": "index.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:rules": "vitest run tests/firestore-rules.test.ts",
-    "test:menu-resolution": "vitest run tests/menu-publish-resolution.test.ts",
-    "test:orders-write-path": "vitest run tests/orders-write-path.test.ts",
-    "test:middleware-guard": "vitest run tests/middleware-branch-admin-guard.test.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:emulator": "npx --yes firebase-tools@14 emulators:exec --only firestore --project demo-qraving \"vitest run --config vitest.integration.config.ts tests/firestore-rules.test.ts tests/menu-publish-resolution.test.ts tests/orders-write-path.test.ts\"",
+    "test:rules":"vitest run --config vitest.integration.config.ts tests/firestore-rules.test.ts",
+    "test:menu-resolution": "vitest run --config vitest.integration.config.ts tests/menu-publish-resolution.test.ts",
+    "test:orders-write-path": "vitest run --config vitest.integration.config.ts tests/orders-write-path.test.ts",
+    "test:middleware-guard": "vitest run --config vitest.integration.config.ts tests/middleware-branch-admin-guard.test.ts",
     "seed:superadmin": "ts-node scripts/seed-superadmin.ts"
   },
   "repository": {
@@ -20,8 +23,8 @@
     "url": "git+https://github.com/tarekFerdous/Qraving.git"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "tarekFerdous",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/tarekFerdous/Qraving/issues"
   },
