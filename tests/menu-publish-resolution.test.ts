@@ -23,21 +23,25 @@
 // Must be set BEFORE any import that touches `@/lib/firebase-admin`
 // (directly or transitively, e.g. via `@/lib/company` or `@/lib/menu`) —
 // that module reads `FIREBASE_SERVICE_ACCOUNT_JSON` at its own
-// module-load time and throws if it's missing. The Admin SDK only needs a
-// *well-formed* (non-empty project_id/private_key/client_email) service
-// account object at init time — it never actually signs/sends a real auth
-// request when `FIRESTORE_EMULATOR_HOST` is set, since the emulator accepts
-// unauthenticated Admin SDK connections. So a fake-but-well-formed value is
-// sufficient here; no real credentials are needed or used.
+// module-load time and throws if it's missing. The Admin SDK never actually
+// signs/sends a real auth request when `FIRESTORE_EMULATOR_HOST` is set (the
+// emulator accepts unauthenticated Admin SDK connections), but newer
+// `firebase-admin` versions fully DER-parse the private key up front, so it
+// must be a well-formed PKCS8 key. A freshly generated throwaway key is used;
+// no real credentials are needed or used.
+import { beforeAll, afterAll, describe, it, expect } from 'vitest';
+import { generateKeyPairSync, randomBytes } from 'crypto';
+
 process.env.FIRESTORE_EMULATOR_HOST = '127.0.0.1:8080';
 process.env.FIREBASE_SERVICE_ACCOUNT_JSON = JSON.stringify({
   project_id: 'demo-qraving',
-  private_key: '-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n',
+  private_key: generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+  }).privateKey,
   client_email: 'fake@demo-qraving.iam.gserviceaccount.com',
 });
-
-import { beforeAll, afterAll, describe, it, expect } from 'vitest';
-import { randomBytes } from 'crypto';
 
 function uniqueId(prefix: string): string {
   return `${prefix}-${Date.now()}-${randomBytes(4).toString('hex')}`;

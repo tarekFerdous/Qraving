@@ -89,10 +89,19 @@ Pass phone to next person OR next person scans QR on their own device
 All items accumulate in shared cart
      │
      ▼
-Any member submits the order
+Any member starts checkout
      │
      ▼
-Order sent for staff review
+Table picks a payment plan (2+ baskets only):
+  - Whole table: one person pays the full total
+  - Split: each person pays their own basket (30-minute deadline)
+  - Shared items: the adder picks who splits the cost
+     │
+     ▼
+Pay via Helcim (card, Apple Pay, Google Pay, Interac)
+     │
+     ▼
+Once every basket is paid, order sent for staff review
      │
      ▼
 Staff accepts or rejects the order
@@ -144,9 +153,10 @@ Menus are managed entirely by the **company admin** via the dashboard. Each menu
   - ✅ Vegan
   - ✅ Vegetarian
   - ✅ Halal
+  - ✅ Kosher
   - ✅ Gluten-Free
   - ✅ Nut-Free
-  - ✅ Dairy-Free
+  - ✅ Dairy-Free / Lactose-Free
   - ⚠️ Allergen warnings (e.g. contains peanuts, shellfish, etc.)
 - **Customization options:**
   - Size variants (e.g. Small / Medium / Large)
@@ -203,7 +213,11 @@ Company Account (top level)
 | QR Code | Encodes dynamic URL with company + branch + table identifiers |
 | Session model | Shared real-time cart per table session |
 | Session timeout | 30 minutes of inactivity |
-| Payment | Not in V1 |
+| Payment | Helcim (card, Apple Pay, Google Pay, Interac), CAD only. Paid before the order reaches staff; amount always computed server-side. Refunds are done in the Helcim dashboard. |
+| Receipts | SMS via Twilio (email endpoint is a stub) |
+| Data | Firebase Firestore (real-time) + Firebase Auth (admin roles via custom claims) |
+| Image storage | Vercel Blob |
+| Hosting | Vercel |
 | Auth (customer) | No login — name + phone number only |
 | Auth (admin) | Account-based login |
 
@@ -220,9 +234,10 @@ Company Account (top level)
 - Staff order review (accept/reject)
 - Order routing to KDS, printer, tablet, phone
 - Admin dashboard (menu, tables, branches, orders)
+- In-app payment via Helcim (card, digital wallets, Interac), whole-table or split, with shared-item splitting
 
 ### V2 — Planned
-- In-app payment (card, digital wallets)
+- Refunds and payment status in the admin dashboard (see TODO.md)
 - Order status tracking for customers
 - Customer order history via phone number
 - Analytics dashboard (popular items, peak hours, revenue)
