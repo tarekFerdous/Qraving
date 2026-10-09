@@ -43,8 +43,10 @@ describe('Firestore security rules', () => {
     await assertFails(setDoc(ref, { name: 'Test Item' }));
   });
 
-  it('allows authenticated write to menuItems', async () => {
-    const db = testEnv.authenticatedContext('admin-uid').firestore();
+  it('allows the company manager to write to menuItems', async () => {
+    const db = testEnv
+      .authenticatedContext('manager-uid', { role: 'manager', companyId: 'demo-company' })
+      .firestore();
     const ref = doc(db, MENU_ITEM_PATH);
     await assertSucceeds(setDoc(ref, { name: 'Test Item' }));
   });
