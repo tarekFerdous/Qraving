@@ -18,9 +18,9 @@ Scan the code on the table, browse the menu, and everyone at the table adds to o
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![CI](https://github.com/tarekFerdous/Qraving/actions/workflows/ci.yml/badge.svg)](https://github.com/tarekFerdous/Qraving/actions/workflows/ci.yml)
 
-<!-- SCREENSHOTS: hero image goes here, e.g.
-<img src="docs/screenshots/menu.png" alt="…" width="300">
--->
+<img src="docs/screenshots/menu-swipe.gif" alt="Animated: swiping through Italian menu cards (Spaghetti Carbonara, Margherita, Penne Arrabbiata, Tiramisu, Risotto ai Funghi), then flipping the Carbonara card to show its description and allergens" width="300">
+
+<sub>Real recording from the <a href="https://youtu.be/tT9zgV6_FE0">V1 demo video</a>. Swipe through a category, and tap a card to flip it for details and allergens.</sub>
 
 </div>
 
@@ -40,6 +40,38 @@ Scan the code on the table, browse the menu, and everyone at the table adds to o
 - **Any business shape.** Each company defines its own layers (for example *Branch → Floor → Table*, or *Hotel → Wing → Room*), and managers can be assigned at any layer.
 - **Two admin panels.** A super-admin panel to onboard companies, and a per-company manager panel to run menus, tables, QR codes and live sessions.
 - **Live menu safety.** If a manager deletes an item mid-session, it is removed from every open cart and the diners are told.
+
+## How it looks
+
+### At the table
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/dietary.png" alt="Menu card for Juicy Grilled Chicken Breasts at $35.00 CAD, with halal, gluten-free, nut-free and dairy-free icons down the side" width="200"><br><sub><b>Menu</b>: dietary icons on every card</sub></td>
+    <td align="center"><img src="docs/screenshots/details.png" alt="Flipped Spaghetti Carbonara card showing its description and an allergen warning: contains eggs, dairy, gluten" width="200"><br><sub><b>Details</b>: description and allergens</sub></td>
+    <td align="center"><img src="docs/screenshots/customize.png" alt="Customize sheet for Spaghetti Carbonara: size Small, Medium or Large; add-ons Extra Sauce, Double Portion, Extra Cheese, No Ice; special instructions box" width="200"><br><sub><b>Customize</b>: sizes, add-ons, notes</sub></td>
+    <td align="center"><img src="docs/screenshots/pass-or-finish.png" alt="Sheet after adding to basket with three choices: Add more, I am done and passing to the next person, or We are done with this table" width="200"><br><sub><b>Pass the phone</b> or finish the table</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/baskets.png" alt="Baskets sheet listing Tarek's Basket with one item, Spaghetti Carbonara (Medium, Double Portion, note: put it in 2 bowls for sharing), with Modify and Pay buttons" width="200"><br><sub><b>Baskets</b>: one per person, shared by the table</sub></td>
+    <td align="center"><img src="docs/screenshots/checkout.png" alt="Checkout showing a total of $18.00 CAD with Pay with Apple Pay, Pay with Google Pay, and a Helcim card-entry form" width="200"><br><sub><b>Checkout</b> with Helcim</sub></td>
+    <td align="center"><img src="docs/screenshots/payment-confirmed.png" alt="Payment confirmed screen: $18.00 CAD paid, thank you Tarek, SMS receipt sent (phone number blurred), payment status, and an optional email receipt field" width="200"><br><sub><b>Paid</b>: SMS receipt, optional email</sub></td>
+    <td></td>
+  </tr>
+</table>
+
+### Manager panel
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/manager-orders.png" alt="Manager dashboard: one active session marked Paying with a Free the table button, and an incoming $72.00 order for 1 Juicy Grilled Chicken Breasts with Accept and Reject buttons" width="200"><br><sub><b>Dashboard</b>: live sessions, accept or reject orders</sub></td>
+    <td align="center"><img src="docs/screenshots/manager-menu.png" alt="Menu tab showing a Chicken category with Juicy Grilled Chicken at $35.00 tagged halal, gluten-free, nut-free, dairy-free and Available, and a Beef category below" width="200"><br><sub><b>Menu</b>: categories, items, tags, availability</sub></td>
+    <td align="center"><img src="docs/screenshots/manager-edit-item.png" alt="Edit item form with photo, name Juicy Grilled Chicken Breasts, description and price $35.00" width="200"><br><sub><b>Edit item</b>: photo, details, price</sub></td>
+    <td align="center"><img src="docs/screenshots/manager-qr.png" alt="Structure tab: Front area with Table 1 and its generated QR code, link, Download PNG and Regenerate, and a Back area below" width="200"><br><sub><b>Structure</b>: areas, tables, QR codes</sub></td>
+  </tr>
+</table>
+
+<sub>All screenshots are from the <a href="https://youtu.be/tT9zgV6_FE0">V1 demo video</a> (51 min), which walks through the customer flow, super-admin setup, the manager panel, and an end-to-end order.</sub>
 
 ## How it works
 
